@@ -60,8 +60,20 @@ async function runSqlFile(pool, filename) {
   const content = fs.readFileSync(filePath, 'utf8');
   const batches = content.split(/^\s*GO\s*$/im).filter(b => b.trim().length > 0);
 
+  let errors = 0;
   for (const batch of batches) {
-    await pool.request().query(batch);
+    try {
+      await pool.request().query(batch);
+    } catch (err) {
+      errors++;
+      // Extrait le nom de vue concernée pour un message lisible
+      const match = batch.match(/CREATE\s+VIEW\s+\S+/i);
+      const ctx   = match ? match[0] : batch.trim().substring(0, 60).replace(/\s+/g, ' ');
+      logger.warn(`[deployer] Lot ignoré (${ctx}…) : ${err.message}`);
+    }
+  }
+  if (errors > 0) {
+    logger.warn(`[deployer] ${filename} : ${errors} lot(s) en erreur (voir logs ci-dessus)`);
   }
 }
 

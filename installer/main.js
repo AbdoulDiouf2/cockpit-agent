@@ -47,6 +47,9 @@ const IS_DEV = IS_DEV_EARLY;
 // Pool SQL courant (maintenu pendant toute la session d'installation)
 let _pool = null;
 
+// Tables Sage détectées lors de api:validate — réutilisées dans service:install
+let _detectedTables = [];
+
 // ─── Fenêtre principale ───────────────────────────────────────────────────────
 
 function createWindow() {
@@ -188,8 +191,9 @@ ipcMain.handle('api:validate', async (_, { email, token }) => {
     );
 
     if (response.data?.valid) {
-      // Stocker le token chiffré sur le disque
+      // Stocker le token chiffré sur le disque et mémoriser les tables détectées
       saveToken(token);
+      _detectedTables = sageTables;
       return { success: true, ...response.data };
     }
     return { success: false, error: response.data?.error || 'Token invalide' };
@@ -217,12 +221,16 @@ ipcMain.handle('service:install', async (event, { sqlConfig, agentId }) => {
     const config = require('./lib/config');
     config.save({
       sql_server:           sqlConfig.server,
+      sql_port:             sqlConfig.port ? parseInt(sqlConfig.port, 10) : null,
       sql_instance:         sqlConfig.instance || null,
       sql_database:         sqlConfig.database,
       sql_use_windows_auth: sqlConfig.useWindowsAuth,
       sql_user:             sqlConfig.user || null,
       agent_id:             agentId,
       platform_url:         process.env.COCKPIT_URL || 'https://api.cockpit.app',
+      allowed_tables:       _detectedTables,
+      max_rows:             1000,
+      query_timeout:        5,
     });
 
     // 3. Installer / démarrer le service

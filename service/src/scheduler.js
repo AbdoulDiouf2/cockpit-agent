@@ -2,68 +2,55 @@
 
 /**
  * Planificateur du service Cockpit Agent.
- * - Sync : toutes les minutes (engine.run() détermine quelles vues sont dues)
- * - Heartbeat : toutes les 5 minutes
+ *
+ * Architecture Zero-Copy : aucune donnée ERP n'est poussée vers le cloud.
+ * Les données sont fournies à la demande via WebSocket (execute_sql).
+ *
+ * - Heartbeat : toutes les 5 minutes → signale que l'agent est vivant
  */
 
 const schedule = require('node-schedule');
 const logger   = require('./utils/logger');
 const health   = require('./utils/health');
 
-let _syncJob      = null;
 let _heartbeatJob = null;
-let _pendingCommands = [];
-
-function getPendingCommands() {
-  const cmds = [..._pendingCommands];
-  _pendingCommands = [];
-  return cmds;
-}
-
-function queueCommand(cmd) {
-  _pendingCommands.push(cmd);
-}
 
 function start() {
-  const engine   = require('./sync/engine');
   const uploader = require('./sync/uploader');
 
-  // Sync toutes les minutes
-  _syncJob = schedule.scheduleJob('* * * * *', async () => {
+  // Heartbeat toutes les minutes (seuil offline backend = 2 min)
+  _heartbeatJob = schedule.scheduleJob('* * * * *', async () => {
     try {
-      await engine.run();
-    } catch (err) {
-      logger.error(`[scheduler] Erreur cycle sync : ${err.message}`);
-      health.setStatus({ ok: false, error: err.message });
-    }
-  });
+      const wsStats = require('./ws/agent-socket').getStats();
+      const status  = wsStats.errorCount > 0 ? 'error' : 'online';
 
-  // Heartbeat toutes les 5 minutes
-  _heartbeatJob = schedule.scheduleJob('*/5 * * * *', async () => {
-    try {
-      const { lastSync, totalSynced } = engine.getStats();
-      const response = await uploader.sendHeartbeat('online', lastSync, totalSynced);
+      await uploader.sendHeartbeat(status, null, 0, {
+        errorCount: wsStats.errorCount,
+        lastError:  wsStats.lastError,
+      });
       health.setStatus({ platformConnected: true });
 
-      if (response?.commands?.length > 0) {
-        for (const cmd of response.commands) {
-          logger.info(`[scheduler] Commande distante reçue : ${cmd}`);
-          queueCommand(cmd);
-        }
-      }
     } catch (err) {
       health.setStatus({ platformConnected: false });
       logger.warn(`[scheduler] Heartbeat échoué : ${err.message}`);
+
+      // Re-connexion WS automatique si token invalide (401/403) ou socket déconnecté
+      const isAuthError = err.response?.status === 401 || err.response?.status === 403;
+      const agentSocket = require('./ws/agent-socket');
+      if (isAuthError || !agentSocket.getStats().connected) {
+        logger.info('[scheduler] Tentative de reconnexion WebSocket…');
+        agentSocket.disconnect();
+        agentSocket.connect();
+      }
     }
   });
 
-  logger.info('[scheduler] Démarré — sync toutes les minutes, heartbeat toutes les 5 min');
+  logger.info('[scheduler] Démarré — heartbeat 1min (mode Zero-Copy)');
 }
 
 function stop() {
-  if (_syncJob)      { _syncJob.cancel();      _syncJob = null; }
-  if (_heartbeatJob) { _heartbeatJob.cancel();  _heartbeatJob = null; }
+  if (_heartbeatJob) { _heartbeatJob.cancel(); _heartbeatJob = null; }
   logger.info('[scheduler] Arrêté');
 }
 
-module.exports = { start, stop, getPendingCommands, queueCommand };
+module.exports = { start, stop };

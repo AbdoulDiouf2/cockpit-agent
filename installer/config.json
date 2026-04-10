@@ -1,6 +1,5 @@
 {
   "sql_server": "localhost",
-  "sql_port": 49414,
   "sql_instance": null,
   "sql_database": "BIJOU",
   "sql_use_windows_auth": true,

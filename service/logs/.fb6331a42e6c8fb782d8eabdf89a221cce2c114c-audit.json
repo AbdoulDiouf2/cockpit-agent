@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 30
+    },
+    "auditLog": "C:\\PROJETS_EQUIPE\\Cockpit\\Ressources\\cockpit-agent\\service\\logs\\.fb6331a42e6c8fb782d8eabdf89a221cce2c114c-audit.json",
+    "files": [
+        {
+            "date": 1775846874099,
+            "name": "C:\\PROJETS_EQUIPE\\Cockpit\\Ressources\\cockpit-agent\\service\\logs\\cockpit-agent-2026-04-10.log",
+            "hash": "61126ab092c52b8678171cab977054efaa0cd91dc0cc88768268ff504226deb0"
+        }
+    ],
+    "hashType": "sha256"
+}

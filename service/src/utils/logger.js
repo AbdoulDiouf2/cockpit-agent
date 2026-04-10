@@ -7,6 +7,23 @@ const path = require('path');
 const LOG_DIR = process.env.COCKPIT_LOG_DIR
   || path.join(process.execPath, '..', 'logs');
 
+// Transport Winston → WebSocket (agent_log)
+// Chargé en lazy pour éviter la dépendance circulaire au démarrage.
+const WinstonTransport = require('winston-transport');
+class SocketTransport extends WinstonTransport {
+  log(info, callback) {
+    // On n'envoie que WARN et ERROR vers la plateforme pour ne pas saturer
+    if (info.level === 'warn' || info.level === 'error') {
+      try {
+        // Require lazy — le module n'est disponible qu'après index.js
+        const { sendLog } = require('../ws/agent-socket');
+        sendLog(info.level, info.message);
+      } catch (_) { /* socket non initialisé — on ignore silencieusement */ }
+    }
+    callback();
+  }
+}
+
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
   format: winston.format.combine(
@@ -29,6 +46,8 @@ const logger = winston.createLogger({
       maxFiles:      '30d',
       zippedArchive: true,
     }),
+    // WebSocket → plateforme (WARN + ERROR uniquement)
+    new SocketTransport(),
   ],
 });
 

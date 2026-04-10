@@ -57,7 +57,8 @@ function get(key) {
  * Chemin fixe : cockpit-agent/service/config.json (trouvé par load() via __dirname)
  */
 function save(config) {
-  const dest = path.join(__dirname, '..', 'config.json');
+  // Sauvegarde dans service/config.json — chemin lu par le service au démarrage
+  const dest = path.join(__dirname, '..', '..', 'service', 'config.json');
   fs.writeFileSync(dest, JSON.stringify(config, null, 2), 'utf8');
   _config = config;
 }

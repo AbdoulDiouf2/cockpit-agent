@@ -27,10 +27,10 @@ async function get(pool, viewName) {
   try {
     const res = await pool.request()
       .input('k', `${KEY_PREFIX}${viewName}`)
-      .query(`SELECT PARAM_VALUE FROM PLATEFORME_PARAMS WHERE PARAM_KEY = @k`);
+      .query(`SELECT Param_Valeur FROM PLATEFORME_PARAMS WHERE Param_Cle = @k`);
 
     if (res.recordset.length > 0) {
-      return parseInt(res.recordset[0].PARAM_VALUE, 10) || 0;
+      return parseInt(res.recordset[0].Param_Valeur, 10) || 0;
     }
     return 0;
   } catch (err) {
@@ -52,10 +52,10 @@ async function set(pool, viewName, value) {
     .input('k', key)
     .input('v', String(value))
     .query(`
-      IF EXISTS (SELECT 1 FROM PLATEFORME_PARAMS WHERE PARAM_KEY = @k)
-        UPDATE PLATEFORME_PARAMS SET PARAM_VALUE = @v, UPDATED_AT = GETDATE() WHERE PARAM_KEY = @k
+      IF EXISTS (SELECT 1 FROM PLATEFORME_PARAMS WHERE Param_Cle = @k)
+        UPDATE PLATEFORME_PARAMS SET Param_Valeur = @v, Date_Modif = GETDATE() WHERE Param_Cle = @k
       ELSE
-        INSERT INTO PLATEFORME_PARAMS (PARAM_KEY, PARAM_VALUE) VALUES (@k, @v)
+        INSERT INTO PLATEFORME_PARAMS (Param_Cle, Param_Valeur) VALUES (@k, @v)
     `);
 }
 

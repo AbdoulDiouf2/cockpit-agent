@@ -2,46 +2,43 @@
 
 /**
  * Point d'entrée du service Windows Cockpit Agent.
- * Ce fichier est lancé par node-windows au démarrage du service.
+ *
+ * Architecture Zero-Copy :
+ *  - Aucune donnée ERP n'est poussée vers le cloud
+ *  - Les données sont fournies à la demande via WebSocket (execute_sql)
+ *  - L'agent se connecte au backend, attend les requêtes, exécute et retourne
  */
 
-const logger    = require('./utils/logger');
-const health    = require('./utils/health');
-const scheduler = require('./scheduler');
-const engine    = require('./sync/engine');
+const logger      = require('./utils/logger');
+const health      = require('./utils/health');
+const scheduler   = require('./scheduler');
+const agentSocket = require('./ws/agent-socket');
 const { closePool } = require('./sql/connection');
 const { HEALTH_PORT, AGENT_VERSION } = require('../../shared/constants');
 
 async function main() {
   logger.info('═══════════════════════════════════════════════');
   logger.info(` Cockpit Agent v${AGENT_VERSION} — démarrage`);
+  logger.info(' Mode : Zero-Copy (données sur demande)');
   logger.info('═══════════════════════════════════════════════');
 
   // Démarrer le serveur de health check local
   health.start(HEALTH_PORT);
-  health.setStatus({ ok: false, error: 'Initialisation en cours...' });
-
-  // Pré-remplir le tableau des vues (affichage immédiat dans le dashboard)
-  const { VIEWS } = require('../../shared/constants');
-  for (const [name, cfg] of Object.entries(VIEWS)) {
-    health.setViewStatus(name, { mode: cfg.mode, interval: cfg.interval, lastSync: null, lastCount: null });
-  }
-
-  // Démarrer le planificateur (sync + heartbeat)
-  scheduler.start();
-
-  // Marquer comme opérationnel immédiatement (avant fetchRemoteConfig qui peut être lent)
   health.setStatus({ ok: true, error: null });
 
-  // Récupérer la configuration distante en arrière-plan (non-bloquant)
-  engine.fetchRemoteConfig();
-  logger.info('Agent opérationnel — synchronisation active');
+  // Démarrer le planificateur (heartbeat uniquement)
+  scheduler.start();
+
+  // Connexion WebSocket vers la plateforme (execute_sql + logs temps réel)
+  agentSocket.connect();
+
+  logger.info('Agent opérationnel — en attente de requêtes');
 }
 
-// Gestion du shutdown propre (SIGTERM envoyé par node-windows à l'arrêt du service)
 async function shutdown(signal) {
   logger.info(`Signal ${signal} reçu — arrêt propre...`);
   scheduler.stop();
+  agentSocket.disconnect();
   await closePool();
   health.stop();
   logger.info('Cockpit Agent arrêté proprement');

@@ -13,7 +13,8 @@ const { machineIdSync } = require('node-machine-id');
 const { PLATFORM_URL, SALT_CRYPTO } = require('../../shared/constants');
 const config    = require('./config');
 
-const TOKEN_FILE = path.join(process.execPath, '..', '.cockpit_token');
+// Chemin partagé avec le service — toujours dans service/ quelle que soit la machine
+const TOKEN_FILE = path.join(__dirname, '..', '..', 'service', '.cockpit_token');
 
 function _deriveKey() {
   const id = machineIdSync();

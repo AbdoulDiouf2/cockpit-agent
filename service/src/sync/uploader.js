@@ -79,17 +79,36 @@ async function send(params) {
 /**
  * Envoie un heartbeat à la plateforme.
  * POST /api/v1/agent/heartbeat
+ *
+ * @param {string}  status        - 'online' | 'error'
+ * @param {Date}    lastSync      - Date de la dernière sync réussie
+ * @param {number}  nbRecordsTotal - Total de lignes envoyées
+ * @param {Object}  [opts]
+ * @param {number}  [opts.errorCount] - Nombre d'erreurs depuis le dernier heartbeat
+ * @param {string}  [opts.lastError]  - Dernière erreur rencontrée
  */
-async function sendHeartbeat(status, lastSync, nbRecordsTotal) {
+async function sendHeartbeat(status, lastSync, nbRecordsTotal, opts = {}) {
   try {
     const token   = getToken();
     const baseUrl = getPlatformUrl();
+    const agentId = require('../config').get('agent_id') || 'unknown';
+
+    // HeartbeatV1Dto n'accepte que ces 3 champs (forbidNonWhitelisted=true côté backend)
+    const payload = {
+      status,
+      lastSync:      lastSync?.toISOString() || null,
+      nbRecordsTotal,
+    };
 
     const response = await axios.post(
       `${baseUrl}/api/v1/agent/heartbeat`,
-      { status, lastSync: lastSync?.toISOString() || null, nbRecordsTotal },
+      payload,
       {
-        headers: { 'Authorization': `Bearer ${token}` },
+        headers: {
+          'Authorization':   `Bearer ${token}`,
+          'X-Agent-Id':      agentId,
+          'X-Agent-Version': AGENT_VERSION,
+        },
         timeout: 10000,
       }
     );
