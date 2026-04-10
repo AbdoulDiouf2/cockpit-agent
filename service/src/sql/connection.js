@@ -42,9 +42,11 @@ async function getPool() {
   logger.info(`Connexion SQL Server : ${cfg.sql_server} / ${cfg.sql_database}`);
   _pool = await sql.connect(sqlConfig);
   logger.info('Pool SQL Server prêt');
+  require('../utils/health').setStatus({ sqlConnected: true });
 
   _pool.on('error', (err) => {
     logger.error('Erreur pool SQL :', err.message);
+    require('../utils/health').setStatus({ sqlConnected: false });
     _pool = null; // Force reconnexion au prochain appel
   });
 

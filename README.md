@@ -130,7 +130,7 @@ cockpit-agent/
 │       │   ├── credential-store.js  # keytar : mot de passe SQL dans Windows Cred. Manager
 │       │   └── token.js             # AES-256-GCM : token chiffré lié au machine ID
 │       └── utils/
-│           ├── health.js      # HTTP 127.0.0.1:8444/health
+│           ├── health.js      # Serveur HTTP :8444 — dashboard HTML (/) + JSON (/health)
 │           └── logger.js      # Winston + DailyRotateFile (30j rétention)
 │
 └── installer/                # Installeur Electron + React
@@ -220,8 +220,11 @@ NODE_ENV=development
 ### Vérifier le health check
 
 ```bash
+# Dashboard HTML (navigateur)
+start http://127.0.0.1:8444/
+
+# JSON machine-readable
 curl http://127.0.0.1:8444/health
-# {"status":"ok","lastSync":"2026-04-10T14:30:00.000Z","version":"1.0.0","ts":"..."}
 ```
 
 ---
@@ -375,9 +378,26 @@ webPreferences: {
 
 ---
 
-## 10. Health check
+## 10. Health check & Dashboard
 
-Le service expose un endpoint HTTP local sur `127.0.0.1:8444` (inaccessible depuis le réseau).
+Le service expose un serveur HTTP local sur le port **8444** avec deux routes.
+
+### Dashboard HTML
+
+```
+GET http://127.0.0.1:8444/
+```
+
+Interface web auto-rafraîchissante (10s) accessible depuis n'importe quel navigateur sur la machine cliente. Affiche :
+
+- **Statut global** (Opérationnel / En erreur) avec badge coloré
+- **Uptime** depuis le démarrage du service
+- **Connexion SQL Server** (Connecté / Déconnecté)
+- **Connexion Plateforme** (Connecté / En attente — basé sur le heartbeat)
+- **Total de lignes** synchronisées depuis le démarrage
+- **Tableau des 12 vues** : mode (INCRÉMENTAL/FULL), intervalle, dernier sync, nb lignes de la dernière batch
+
+### Endpoint JSON
 
 ```
 GET http://127.0.0.1:8444/health
@@ -388,7 +408,15 @@ GET http://127.0.0.1:8444/health
   "status": "ok",
   "lastSync": "2026-04-10T14:30:00.000Z",
   "error": null,
+  "totalSynced": 145230,
+  "sqlConnected": true,
+  "platformConnected": true,
+  "views": {
+    "VW_KPI_SYNTESE": { "lastSync": "2026-04-10T14:30:00.000Z", "lastCount": 1, "mode": "FULL", "interval": 5 },
+    "VW_GRAND_LIVRE_GENERAL": { "lastSync": "2026-04-10T14:28:00.000Z", "lastCount": 3550, "mode": "INCREMENTAL", "interval": 15 }
+  },
   "version": "1.0.0",
+  "uptime": 3612,
   "ts": "2026-04-10T14:35:12.456Z"
 }
 ```
@@ -396,9 +424,16 @@ GET http://127.0.0.1:8444/health
 | Champ | Description |
 |-------|-------------|
 | `status` | `"ok"` ou `"error"` |
-| `lastSync` | ISO 8601 de la dernière sync réussie |
+| `lastSync` | ISO 8601 de la dernière sync réussie (toutes vues confondues) |
 | `error` | Message d'erreur si `status = "error"` |
+| `totalSynced` | Total de lignes envoyées depuis le démarrage |
+| `sqlConnected` | `true` si le pool SQL Server est actif |
+| `platformConnected` | `true` si le dernier heartbeat a réussi |
+| `views` | Statut détaillé par vue |
+| `uptime` | Durée de fonctionnement en secondes |
 | `version` | Version de l'agent |
+
+> Le dashboard écoute sur `0.0.0.0:8444`, accessible depuis le réseau local (pratique pour un monitoring depuis un autre poste). L'endpoint `/health` renvoie HTTP 200 si `status = ok`, 503 sinon.
 
 ---
 

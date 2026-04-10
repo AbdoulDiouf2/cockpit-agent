@@ -21,6 +21,12 @@ async function main() {
   health.start(HEALTH_PORT);
   health.setStatus({ ok: false, error: 'Initialisation en cours...' });
 
+  // Pré-remplir le tableau des vues (affichage immédiat dans le dashboard)
+  const { VIEWS } = require('../../shared/constants');
+  for (const [name, cfg] of Object.entries(VIEWS)) {
+    health.setViewStatus(name, { mode: cfg.mode, interval: cfg.interval, lastSync: null, lastCount: null });
+  }
+
   // Démarrer le planificateur (sync + heartbeat)
   scheduler.start();
 

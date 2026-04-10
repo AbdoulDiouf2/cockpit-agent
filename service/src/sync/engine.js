@@ -162,6 +162,14 @@ async function run() {
       _totalSynced    += result.recordset.length;
       _lastRunTimes[viewName] = Date.now();
 
+      // Mise à jour statut par vue dans le dashboard
+      health.setViewStatus(viewName, {
+        lastSync:  new Date().toISOString(),
+        lastCount: result.recordset.length,
+        mode:      effectiveMode,
+        interval:  VIEWS[viewName]?.interval,
+      });
+
       logger.info(`[engine] ${viewName} — ${result.recordset.length} lignes (watermark: ${newWatermark})`);
 
     } catch (err) {

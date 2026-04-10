@@ -43,6 +43,7 @@ function start() {
     try {
       const { lastSync, totalSynced } = engine.getStats();
       const response = await uploader.sendHeartbeat('online', lastSync, totalSynced);
+      health.setStatus({ platformConnected: true });
 
       if (response?.commands?.length > 0) {
         for (const cmd of response.commands) {
@@ -51,6 +52,7 @@ function start() {
         }
       }
     } catch (err) {
+      health.setStatus({ platformConnected: false });
       logger.warn(`[scheduler] Heartbeat échoué : ${err.message}`);
     }
   });
