@@ -6,7 +6,7 @@
  */
 
 const keytar = require('keytar');
-const { KEYTAR_SERVICE } = require('../../../shared/constants');
+const { KEYTAR_SERVICE } = require('../../shared/constants');
 
 async function saveCredential(key, value) {
   await keytar.setPassword(KEYTAR_SERVICE, key, value);

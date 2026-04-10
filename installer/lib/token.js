@@ -10,8 +10,8 @@ const crypto    = require('crypto');
 const fs        = require('fs');
 const path      = require('path');
 const { machineIdSync } = require('node-machine-id');
-const { PLATFORM_URL, SALT_CRYPTO } = require('../../../shared/constants');
-const config    = require('../config');
+const { PLATFORM_URL, SALT_CRYPTO } = require('../../shared/constants');
+const config    = require('./config');
 
 const TOKEN_FILE = path.join(process.execPath, '..', '.cockpit_token');
 
