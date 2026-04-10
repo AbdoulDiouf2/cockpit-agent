@@ -1,0 +1,45 @@
+version: '3.8'
+
+# =============================================================================
+# Cockpit Agent — Environnement de test client
+# Simule une base Sage 100 pour tester l'installation de l'agent from scratch.
+#
+# Usage :
+#   docker-compose up -d
+#   # Attendre ~30s que SQL Server démarre, puis :
+#   docker-compose exec sqlserver /opt/mssql-tools/bin/sqlcmd \
+#     -S localhost -U sa -P "CockpitTest#2024" \
+#     -i /seed/seed_test.sql
+#
+# Connexion agent :
+#   host     : localhost
+#   port     : 1434  (évite le conflit avec un SQL Server local sur 1433)
+#   database : SAGE_TEST
+#   user     : sa
+#   password : CockpitTest#2024
+# =============================================================================
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2019-latest
+    container_name: cockpit-sage-test
+    restart: unless-stopped
+    ports:
+      - "1434:1433"
+    environment:
+      ACCEPT_EULA: "Y"
+      SA_PASSWORD: "CockpitTest#2024"
+      MSSQL_PID: "Developer"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+      - ./seed:/seed
+    healthcheck:
+      test: ["CMD", "/opt/mssql-tools/bin/sqlcmd", "-S", "localhost",
+             "-U", "sa", "-P", "CockpitTest#2024", "-Q", "SELECT 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  sqlserver-data:
