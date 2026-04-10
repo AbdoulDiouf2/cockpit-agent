@@ -17,12 +17,12 @@ timeout /t 45 /nobreak
 
 echo.
 echo [3/3] Chargement du schema et des donnees de test...
-docker-compose exec -T sqlserver /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "CockpitTest#2024" -i /seed/seed_test.sql
+docker-compose exec -T sqlserver /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "CockpitTest#2024" -C -i /seed/seed_test.sql
 
 if errorlevel 1 (
     echo.
     echo ERREUR lors du seed. Relancer dans 30s si SQL Server n'etait pas encore pret :
-    echo   docker-compose exec -T sqlserver /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "CockpitTest#2024" -i /seed/seed_test.sql
+    echo   docker-compose exec -T sqlserver /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "CockpitTest#2024" -C -i /seed/seed_test.sql
 ) else (
     echo.
     echo ==============================================

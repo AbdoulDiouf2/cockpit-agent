@@ -273,7 +273,7 @@ IF OBJECT_ID('dbo.F_IMMOAMORT', 'U') IS NULL
 CREATE TABLE dbo.F_IMMOAMORT (
     IM_Code        NVARCHAR(13)  NOT NULL,
     IA_Annee       SMALLINT      NOT NULL,
-    IA_TypeAmo     TINYINT       NULL DEFAULT 0,  -- 0=Économique,1=Fiscal
+    IA_TypeAmo     TINYINT       NOT NULL DEFAULT 0,  -- 0=Économique,1=Fiscal
     IA_Taux        NUMERIC(7,4)  NULL DEFAULT 0,
     cbMarq         INT           NOT NULL DEFAULT 0,
     PRIMARY KEY (IM_Code, IA_Annee, IA_TypeAmo)
@@ -307,10 +307,10 @@ INSERT INTO dbo.F_COMPTEG (CG_Num, CG_Intitule, CG_Type) VALUES
 ('101000', 'Capital social',                  0),
 ('106100', 'Réserve légale',                  0),
 ('120000', 'Résultat de l''exercice',         0),
-('164000', 'Emprunts auprès des établissements de crédit', 0),
+('164000', 'Emprunts établiss. crédit',      0),
 -- Classe 2
 ('215000', 'Installations techniques',        0),
-('218100', 'Installations générales - Agencements', 0),
+('218100', 'Instal. gén. - Agencements',      0),
 ('280000', 'Amortissements immos corporelles',0),
 -- Classe 3
 ('370000', 'Stocks de marchandises',          0),
