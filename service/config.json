@@ -1,0 +1,9 @@
+{
+  "sql_server": "localhost",
+  "sql_instance": null,
+  "sql_database": "BIJOU",
+  "sql_use_windows_auth": true,
+  "sql_user": null,
+  "agent_id": "5b58e6fb-de5e-469e-99ed-5a296c2bf6dd",
+  "platform_url": "http://localhost:3000"
+}

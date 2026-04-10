@@ -1,0 +1,8 @@
+node_modules/
+dist/
+installer/dist/
+service/dist/
+*.log
+.env
+config.local.json
+.env.dev

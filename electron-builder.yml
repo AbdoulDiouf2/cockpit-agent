@@ -1,0 +1,48 @@
+appId: fr.cockpit.agent
+productName: Cockpit Agent
+copyright: Copyright © 2026 Nafaka Tech — Tous droits réservés
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  sign: null                                 # Pas de signature (pas de certificat)
+  # icon: installer/assets/icon.ico          # Décommenter quand icon.ico disponible
+  # signingHashAlgorithms: [sha256]          # Décommenter avec un Code Signing Certificate
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  runAfterFinish: true
+  createDesktopShortcut: false
+  createStartMenuShortcut: true
+  shortcutName: Cockpit Agent
+  license: installer/assets/LICENSE.txt
+  # installerHeader: installer/assets/header.bmp  # Décommenter quand header.bmp disponible
+
+files:
+  - installer/dist/**
+  - installer/main.js
+  - installer/preload.js
+  - installer/index.html
+  - installer/lib/**
+  - shared/**
+  - "!build/**"
+  - "!dist/**"
+  - "!.env*"
+  - "!*.md"
+
+asarUnpack:
+  - "node_modules/mssql/**"
+  - "node_modules/msnodesqlv8/**"
+  - "node_modules/keytar/**"
+  - "node_modules/node-windows/**"
+  - "node_modules/node-machine-id/**"
+
+extraResources:
+  - from: dist/service/cockpit-agent-service.exe
+    to: service/cockpit-agent-service.exe
+
+directories:
+  output: dist/installer
+  buildResources: installer/assets

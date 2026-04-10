@@ -1,0 +1,30 @@
+{
+  "name": "cockpit-agent-installer",
+  "version": "1.0.0",
+  "description": "Installeur Cockpit Agent — interface graphique (Electron + React)",
+  "main": "main.js",
+  "scripts": {
+    "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "build": "vite build && electron-builder --config ../electron-builder.yml",
+    "build:renderer": "vite build"
+  },
+  "dependencies": {
+    "axios": "^1.7.2",
+    "keytar": "^7.9.0",
+    "msnodesqlv8": "^5.1.9",
+    "mssql": "^10.0.4",
+    "node-machine-id": "^1.1.12",
+    "node-windows": "^1.0.0-beta.8"
+  },
+  "devDependencies": {
+    "@electron/fuses": "^1.8.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^8.2.2",
+    "electron": "^28.3.3",
+    "electron-builder": "^24.13.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "vite": "^5.3.1",
+    "wait-on": "^7.2.0"
+  }
+}

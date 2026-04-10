@@ -1,0 +1,33 @@
+{
+  "name": "cockpit-agent",
+  "version": "1.0.0",
+  "description": "Agent On-Premises Cockpit — Synchronisation Sage 100 vers la plateforme BI",
+  "author": "Nafaka Tech <contact@cockpit.app>",
+  "main": "installer/main.js",
+  "private": true,
+  "workspaces": [
+    "installer",
+    "service"
+  ],
+  "scripts": {
+    "dev:installer": "npm run dev --workspace=installer",
+    "dev:service": "npm run dev --workspace=service",
+    "build:service": "node build/build-service.js",
+    "build:installer": "node build/build-installer.js --skip-service",
+    "build": "node build/build-service.js && node build/build-installer.js --skip-service"
+  },
+  "dependencies": {
+    "axios": "^1.7.2",
+    "keytar": "^7.9.0",
+    "mssql": "^10.0.4",
+    "msnodesqlv8": "^5.1.9",
+    "node-machine-id": "^1.1.12",
+    "node-windows": "^1.0.0-beta.8",
+    "node-schedule": "^2.1.1",
+    "winston": "^3.13.0",
+    "winston-daily-rotate-file": "^5.0.0"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
+  }
+}

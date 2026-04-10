@@ -1,0 +1,8 @@
+LICENCE PROPRIÉTAIRE — COCKPIT AGENT
+Copyright © 2026 Nafaka Tech. Tous droits réservés.
+
+Ce logiciel est fourni exclusivement dans le cadre d'un abonnement actif à la
+plateforme Cockpit. Toute reproduction, modification ou distribution non
+autorisée est strictement interdite.
+
+Pour toute question : support@cockpit.app
