@@ -6,7 +6,7 @@ const logger = require('./logger');
 const { detectSageCapabilities } = require('./detector');
 
 // Chemin vers les scripts SQL partagés (embarqués dans le build)
-const SQL_DIR = path.join(__dirname, '..', '..', '..', 'shared', 'sql');
+const SQL_DIR = path.join(__dirname, '..', '..', 'shared', 'sql');
 
 /**
  * Déploie les vues BI dans la base Sage 100.
@@ -31,11 +31,11 @@ async function deployViews(pool, onProgress) {
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     logger.info(`[deployer] Exécution : ${file}`);
-    if (onProgress) onProgress(file, files.length, i + 1, 'running');
+    if (onProgress) onProgress(i + 1, files.length, file, 'running');
 
     await runSqlFile(pool, file);
 
-    if (onProgress) onProgress(file, files.length, i + 1, 'done');
+    if (onProgress) onProgress(i + 1, files.length, file, 'done');
     logger.info(`[deployer] OK : ${file}`);
   }
 

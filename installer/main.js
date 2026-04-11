@@ -30,8 +30,6 @@ if (IS_DEV_EARLY) {
 const sql     = require('mssql');
 // msnodesqlv8 : driver natif ODBC pour Windows Integrated Security
 // Requis uniquement quand useWindowsAuth = true (tedious ne supporte pas SSPI)
-let sqlOdbc = null;
-try { sqlOdbc = require('mssql/msnodesqlv8'); } catch (_) {}
 const axios   = require('axios');
 const Service = require('node-windows').Service;
 const { machineIdSync } = require('node-machine-id');
@@ -97,35 +95,44 @@ ipcMain.handle('sql:test', async (_, { server, port, instance, database, useWind
   try {
     if (_pool) await _pool.close().catch(() => {});
 
+    // Normalisation de l'adresse pour Docker / WSL sur Windows
+    const targetServer = (server === 'localhost') ? '127.0.0.1' : server;
+
     if (useWindowsAuth) {
-      // tedious (driver par défaut de mssql) ne supporte pas Windows SSPI.
-      // On utilise msnodesqlv8 qui passe par l'ODBC Driver natif Windows.
-      if (!sqlOdbc) {
-        return { success: false, error: "Le module msnodesqlv8 est requis pour l'authentification Windows. Lancez : npm install msnodesqlv8 && npx electron-rebuild -f -w msnodesqlv8" };
+      let mssqlOdbc;
+      try {
+        mssqlOdbc = require('mssql/msnodesqlv8');
+      } catch (e) {
+        return { 
+          success: false, 
+          error: "Le module msnodesqlv8 est requis pour l'authentification Windows. Erreur: " + e.message 
+        };
       }
 
       const serverStr = instance
-        ? `${server}\\${instance}`
-        : (port ? `${server},${port}` : server);
+        ? `${targetServer}\\${instance}`
+        : (port ? `${targetServer},${port}` : targetServer);
 
       const connStr = `Driver={ODBC Driver 17 for SQL Server};Server=${serverStr};Database=${database};Trusted_Connection=yes;TrustServerCertificate=yes;`;
-      _pool = await sqlOdbc.connect({ connectionString: connStr, pool: { max: 1, min: 0 } });
+      _pool = await mssqlOdbc.connect({ connectionString: connStr, pool: { max: 1, min: 0 } });
 
     } else {
       const config = {
-        server,
+        server: targetServer,
         database,
         user,
         password,
+        port: port ? parseInt(port, 10) : 1433,
         options: {
           trustServerCertificate: true,
           enableArithAbort: true,
+          encrypt: true,
           instanceName: instance || undefined,
         },
-        connectionTimeout: 10000,
+        connectionTimeout: 15000,
         pool: { max: 1, min: 0 },
       };
-      if (port) config.port = parseInt(port, 10);
+      // On utilise le package 'mssql' standard (tedious) chargé au début du fichier
       _pool = await sql.connect(config);
     }
 
@@ -134,8 +141,12 @@ ipcMain.handle('sql:test', async (_, { server, port, instance, database, useWind
     return { success: true, version };
 
   } catch (err) {
+    console.error('SQL Connection Error:', err);
     _pool = null;
-    return { success: false, error: err.message };
+    
+    // Sérialisation propre de l'erreur (incluant les propriétés non-énumérables comme message et stack)
+    const errorDetails = JSON.stringify(err, Object.getOwnPropertyNames(err), 2);
+    return { success: false, error: errorDetails };
   }
 });
 
