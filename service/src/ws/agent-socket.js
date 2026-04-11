@@ -11,6 +11,7 @@
  *   execute_sql    → { jobId, sql, timeout? }
  *
  * Événements émis :
+ *   agent_config   → { sageType, sageMode, sageHost, sagePort, sageVersion, sqlServer }
  *   sql_result     → { jobId, result?, error?, metadata? }
  *   agent_log      → { level, message, timestamp }
  *
@@ -108,6 +109,10 @@ function connect() {
     _stats.connected = true;
     health.setStatus({ wsConnected: true, platformConnected: true });
     sendLog('info', `Agent authentifié et prêt pour l'organisation ${organizationId}`);
+
+    // Envoyer la configuration Sage locale au backend pour éviter la double saisie
+    // lors de l'onboarding (le backend met à jour l'organisation et auto-complète le step 3)
+    _sendAgentConfig();
   });
 
   _socket.on('disconnect', (reason) => {
@@ -155,6 +160,32 @@ function connect() {
       sendLog('error', `Échec SQL job ${jobId} : ${msg}`);
     }
   });
+}
+
+// ─── Envoi de la config Sage au backend (onboarding auto-complete) ───────────
+
+function _sendAgentConfig() {
+  if (!_socket?.connected) return;
+  try {
+    const cfg = config.load();
+
+    // Construire la chaîne sqlServer (ex: "MONSERVEUR\SAGE" ou "192.168.1.10,1433")
+    const sqlServer = cfg.sql_instance
+      ? `${cfg.sql_server}\\${cfg.sql_instance}`
+      : cfg.sql_server || null;
+
+    _socket.emit('agent_config', {
+      sageType:    cfg.sage_type    || null,  // ex: "100" ou "X3" — stocké lors de l'installation
+      sageMode:    'local',                   // l'agent est toujours on-premise
+      sageHost:    cfg.sql_server   || null,
+      sagePort:    cfg.sql_port     || null,
+      sageVersion: cfg.sage_version || null,  // ex: "v21plus" — détecté lors de l'installation
+      sqlServer,
+    });
+    logger.info('[ws] agent_config envoyé au backend');
+  } catch (err) {
+    logger.warn(`[ws] Impossible d'envoyer agent_config : ${err.message}`);
+  }
 }
 
 // ─── Envoi de logs vers la plateforme ────────────────────────────────────────

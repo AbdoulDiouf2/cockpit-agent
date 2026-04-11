@@ -48,6 +48,9 @@ let _pool = null;
 // Tables Sage détectées lors de api:validate — réutilisées dans service:install
 let _detectedTables = [];
 
+// Capacités Sage détectées lors de sql:detect — réutilisées dans service:install
+let _detectedCaps = null;
+
 // ─── Fenêtre principale ───────────────────────────────────────────────────────
 
 function createWindow() {
@@ -156,6 +159,7 @@ ipcMain.handle('sql:detect', async () => {
   if (!_pool) return { success: false, error: 'Connexion SQL non établie' };
   try {
     const caps = await detectSageCapabilities(_pool);
+    _detectedCaps = caps; // mémoriser pour service:install
     return { success: true, caps };
   } catch (err) {
     return { success: false, error: err.message };
@@ -242,6 +246,9 @@ ipcMain.handle('service:install', async (event, { sqlConfig, agentId }) => {
       allowed_tables:       _detectedTables,
       max_rows:             1000,
       query_timeout:        5,
+      // Config Sage envoyée automatiquement au backend lors de la première connexion WebSocket
+      sage_type:            sqlConfig.sageType || '100',           // "100" | "X3" — sélectionné dans l'UI
+      sage_version:         _detectedCaps?.sageVersion || null,    // "v21plus" | "v15v17" | "fallback"
     });
 
     // 3. Installer / démarrer le service

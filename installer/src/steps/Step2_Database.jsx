@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 
 const INITIAL = {
+  sageType:       '100',
   server:         '',
   port:           '',
   instance:       '',
@@ -38,9 +39,17 @@ export default function Step2_Database({ onNext, onBack }) {
     <div className="step">
       <h1 className="step__title">Connexion à SQL Server</h1>
       <p className="step__desc">
-        Renseignez les paramètres de connexion à votre base de données Sage 100.
+        Renseignez les paramètres de connexion à votre base de données Sage.
         Le compte doit disposer des droits de lecture sur la base Sage.
       </p>
+
+      <div className="form-group">
+        <label className="form-label">Solution Sage</label>
+        <select className="form-input" value={form.sageType} onChange={e => set('sageType', e.target.value)}>
+          <option value="100">Sage 100</option>
+          <option value="X3">Sage X3</option>
+        </select>
+      </div>
 
       <div className="form-row">
         <div className="form-group">
@@ -61,7 +70,7 @@ export default function Step2_Database({ onNext, onBack }) {
       </div>
 
       <div className="form-group">
-        <label className="form-label">Base de données Sage 100</label>
+        <label className="form-label">Base de données Sage</label>
         <input className="form-input" placeholder="ex : GESCOM"
           value={form.database} onChange={e => set('database', e.target.value)} />
       </div>
