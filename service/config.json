@@ -6,7 +6,7 @@
   "sql_use_windows_auth": true,
   "sql_user": null,
   "agent_id": "0bc42c76-3e21-4979-b9db-46d2236ee0f5",
-  "platform_url": "http://localhost:3000",
+  "platform_url": "https://cockpit.nafakatech.com",
   "allowed_tables": [
     "F_ABOENTETE",
     "F_ABOENTETEINFOS",
