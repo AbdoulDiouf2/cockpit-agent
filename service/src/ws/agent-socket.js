@@ -147,8 +147,20 @@ function connect() {
       logger.info(`[ws] job=${jobId} terminé — ${metadata.rows} lignes en ${metadata.exec_time_ms}ms`);
 
     } catch (err) {
-      const msg = err.message;
-      logger.error(`[ws] execute_sql job=${jobId} échoué : ${msg}`);
+      // Sérialisation robuste : err.message peut être un objet (erreurs ODBC msnodesqlv8)
+      let msg;
+      if (typeof err?.message === 'string') {
+        msg = err.message;
+      } else if (err?.message !== undefined) {
+        try { msg = JSON.stringify(err.message); } catch (_) { msg = String(err.message); }
+      } else if (err instanceof Error) {
+        msg = err.toString();
+      } else {
+        try { msg = JSON.stringify(err, Object.getOwnPropertyNames(err ?? {})); } catch (_) { msg = String(err); }
+      }
+
+      // Log complet (objets imbriqués inclus) pour faciliter le diagnostic
+      logger.error(`[ws] execute_sql job=${jobId} échoué : ${msg} — raw: ${JSON.stringify(err, Object.getOwnPropertyNames(err ?? {}))}`);
 
       _socket.emit('sql_result', { jobId, error: msg });
 
