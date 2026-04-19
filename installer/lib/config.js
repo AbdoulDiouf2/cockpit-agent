@@ -57,8 +57,13 @@ function get(key) {
  * Chemin fixe : cockpit-agent/service/config.json (trouvé par load() via __dirname)
  */
 function save(config) {
-  // Sauvegarde dans service/config.json — chemin lu par le service au démarrage
-  const dest = path.join(__dirname, '..', '..', 'service', 'config.json');
+  // En prod (packaged) : écrire dans resources/service/dist/ (hors asar, là où le service .exe tourne)
+  // En dev             : écrire dans cockpit-agent/service/config.json
+  const { app } = require('electron');
+  const dest = app.isPackaged
+    ? path.join(process.resourcesPath, 'service', 'dist', 'config.json')
+    : path.join(__dirname, '..', '..', 'service', 'config.json');
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.writeFileSync(dest, JSON.stringify(config, null, 2), 'utf8');
   _config = config;
 }

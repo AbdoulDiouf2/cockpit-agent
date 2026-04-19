@@ -26,7 +26,9 @@ function load() {
 
   // 2. Fallback : fichier config.json — chemin fixe relatif au module
   const configPaths = [
-    path.join(__dirname, '..', 'config.json'),       // service/config.json  (dev + prod)
+    // En prod (pkg) : le config.json est écrit par l'installeur dans le même répertoire que le .exe
+    ...(process.pkg ? [path.join(path.dirname(process.execPath), 'config.json')] : []),
+    path.join(__dirname, '..', 'config.json'),       // service/config.json  (dev)
     path.join(__dirname, '..', '..', 'config.json'), // cockpit-agent/config.json
     path.join(process.cwd(), 'config.json'),          // CWD (fallback ultime)
   ];

@@ -13,8 +13,17 @@ const { machineIdSync } = require('node-machine-id');
 const { PLATFORM_URL, SALT_CRYPTO } = require('../../../shared/constants');
 const config    = require('../config');
 
-// Chemin fixe dans service/ — partagé avec l'installeur
-const TOKEN_FILE = path.join(__dirname, '..', '..', '.cockpit_token');
+/**
+ * Répertoire de données réel où le token est lu.
+ * - En prod (pkg) : répertoire du .exe (process.execPath), hors snapshot virtuel
+ * - En dev        : cockpit-agent/service/
+ */
+function _getDataDir() {
+  if (process.pkg) {
+    return path.dirname(process.execPath);
+  }
+  return path.join(__dirname, '..', '..');
+}
 
 function _deriveKey() {
   const id = machineIdSync();
@@ -25,6 +34,7 @@ function _deriveKey() {
  * Chiffre et persiste le token API sur le disque.
  */
 function saveToken(token) {
+  const tokenFile = path.join(_getDataDir(), '.cockpit_token');
   const key = _deriveKey();
   const iv  = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
@@ -33,18 +43,19 @@ function saveToken(token) {
   const tag       = cipher.getAuthTag();
 
   const payload = Buffer.concat([iv, tag, encrypted]).toString('base64');
-  fs.writeFileSync(TOKEN_FILE, payload, 'utf8');
+  fs.writeFileSync(tokenFile, payload, 'utf8');
 }
 
 /**
  * Déchiffre et retourne le token API depuis le fichier local.
  */
 function getToken() {
-  if (!fs.existsSync(TOKEN_FILE)) {
+  const tokenFile = path.join(_getDataDir(), '.cockpit_token');
+  if (!fs.existsSync(tokenFile)) {
     throw new Error('Token API introuvable — réinstallez l\'agent ou régénérez le token depuis le portail.');
   }
 
-  const raw     = Buffer.from(fs.readFileSync(TOKEN_FILE, 'utf8'), 'base64');
+  const raw     = Buffer.from(fs.readFileSync(tokenFile, 'utf8'), 'base64');
   const iv      = raw.slice(0, 16);
   const tag     = raw.slice(16, 32);
   const payload = raw.slice(32);
