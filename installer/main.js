@@ -288,12 +288,10 @@ ipcMain.handle('service:install', async (event, { sqlConfig, agentId }) => {
       const daemonDir = path.join(path.dirname(process.execPath), 'daemon');
       fs.mkdirSync(daemonDir, { recursive: true });
 
-      // winsw.exe livré dans resources — renommé en CockpitAgent.exe (convention winsw : exe + xml même nom)
       const winswSrc = path.join(process.resourcesPath, 'winsw.exe');
       const winswExe = path.join(daemonDir, `${SERVICE_NAME}.exe`);
-      fs.copyFileSync(winswSrc, winswExe);
 
-      // XML de configuration winsw
+      // XML : toujours écrasable (pas de verrou SCM dessus)
       const xmlContent = [
         '<service>',
         `  <id>${SERVICE_NAME}</id>`,
@@ -306,19 +304,38 @@ ipcMain.handle('service:install', async (event, { sqlConfig, agentId }) => {
       ].join('\r\n');
       fs.writeFileSync(path.join(daemonDir, `${SERVICE_NAME}.xml`), xmlContent, 'utf8');
 
-      const winsw = (args) => execFileSync(winswExe, args, { windowsHide: true, encoding: 'utf8' });
+      // L'app Electron est lancée de-élevée par NSIS → winsw (WMI) nécessite admin.
+      // IMPORTANT : CockpitAgent.exe peut être verrouillé par le SCM si le service
+      // existe déjà. La copie de winsw.exe se fait DANS le script élevé, après
+      // stop/uninstall (qui libère le verrou), évitant EBUSY.
+      const q = (s) => s.replace(/'/g, "''");   // escape PS single-quote
+      const psScript = path.join(daemonDir, 'install-service.ps1');
+      fs.writeFileSync(psScript, [
+        `$ErrorActionPreference = 'Continue'`,
+        `$winsw = '${q(winswExe)}'`,
+        `# 1. Stop + uninstall → libère le verrou sur CockpitAgent.exe`,
+        `try { & $winsw stop    2>&1 | Out-Null } catch {}`,
+        `Start-Sleep -Seconds 2`,
+        `try { & $winsw uninstall 2>&1 | Out-Null } catch {}`,
+        `Start-Sleep -Seconds 1`,
+        `# 2. Copier winsw.exe frais (verrou libéré par le SCM)`,
+        `Copy-Item -Force -Path '${q(winswSrc)}' -Destination $winsw`,
+        `# 3. Installer + démarrer`,
+        `$ErrorActionPreference = 'Stop'`,
+        `& $winsw install`,
+        `if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }`,
+        `& $winsw start`,
+        `exit $LASTEXITCODE`,
+      ].join('\r\n'), 'utf8');
 
-      // Arrêter + désinstaller l'ancienne instance (ignore si absent)
-      try { winsw(['stop']);      await new Promise(r => setTimeout(r, 2000)); } catch (_) {}
-      try { winsw(['uninstall']); await new Promise(r => setTimeout(r, 1000)); } catch (_) {}
-
-      // Enregistrer le service via winsw
-      event.sender.send('service:progress', { step: 3, total: 5, label: 'Enregistrement du service Windows…' });
-      winsw(['install']);
-
-      // Démarrer
-      event.sender.send('service:progress', { step: 3, total: 5, label: 'Démarrage du service…' });
-      winsw(['start']);
+      const psScriptQ = q(psScript);
+      event.sender.send('service:progress', { step: 3, total: 5, label: 'Élévation UAC requise — acceptez l\'invite Windows…' });
+      execFileSync('powershell.exe', [
+        '-NonInteractive', '-NoProfile', '-Command',
+        `$p = Start-Process powershell.exe -Verb RunAs -Wait -PassThru -WindowStyle Hidden` +
+        ` -ArgumentList @('-NonInteractive','-NoProfile','-ExecutionPolicy','Bypass','-File','${psScriptQ}');` +
+        ` if ($p.ExitCode -ne 0) { throw "winsw exit $($p.ExitCode)" }`,
+      ], { windowsHide: false, timeout: 60000, encoding: 'utf8' });
     }
 
     // 4. Attendre que le health check réponde (max 90s — pkg + SCM peuvent prendre du temps)
