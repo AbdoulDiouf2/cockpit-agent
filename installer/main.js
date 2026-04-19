@@ -278,49 +278,31 @@ ipcMain.handle('service:install', async (event, { sqlConfig, agentId }) => {
       child.unref();
       event.sender.send('service:progress', { step: 3, total: 5, label: 'Service démarré (mode dev)…' });
     } else {
-      // En prod : installation Windows Service via node-windows
-      await new Promise((resolve, reject) => {
-        const svc = new Service({
-          name:        SERVICE_NAME,
-          description: SERVICE_DESCRIPTION,
-          script:      servicePath,
-        });
+      // En prod : enregistrement via sc.exe — cockpit-agent-service.exe est un exe pkg
+      // autonome (Node.js embarqué), pas un script .js. node-windows n'est pas adapté
+      // car il utilise process.execPath (= Electron) comme runtime Node.
+      const { execFileSync } = require('child_process');
 
-        const timeout = setTimeout(() => {
-          settled = true;
-          reject(new Error("Timeout installation service (30s). Vérifiez que l'installeur est lancé en tant qu'Administrateur."));
-        }, 30000);
+      const sc = (args) => execFileSync('sc.exe', args, { windowsHide: true, encoding: 'utf8' });
 
-        // Garde settled pour éviter double resolve/reject si svc.start() émet 'error'
-        // après que done() a déjà résolu la promesse.
-        let settled = false;
-        const done = () => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timeout);
-          resolve();
-        };
-        const fail = (err) => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timeout);
-          const error = err instanceof Error ? err : new Error(err ? String(err) : 'Erreur inconnue lors de l\'installation du service');
-          reject(error);
-        };
+      // Arrêter + supprimer le service existant proprement (ignore les erreurs si absent)
+      try { sc(['stop', SERVICE_NAME]); await new Promise(r => setTimeout(r, 2000)); } catch (_) {}
+      try { sc(['delete', SERVICE_NAME]); await new Promise(r => setTimeout(r, 1000)); } catch (_) {}
 
-        svc.on('install',             () => { event.sender.send('service:progress', { step: 3, total: 5, label: 'Service installé, démarrage…' }); svc.start(); done(); });
-        svc.on('alreadyinstalled',    () => { event.sender.send('service:progress', { step: 3, total: 5, label: 'Service déjà installé, redémarrage…' }); svc.start(); done(); });
-        svc.on('invalidinstallation', () => fail(new Error('Installation invalide — supprimez le service existant et réessayez.')));
-        svc.on('error',               (err) => fail(err));
+      // Créer le service avec le chemin absolu vers l'exe pkg
+      event.sender.send('service:progress', { step: 3, total: 5, label: 'Enregistrement du service Windows…' });
+      sc(['create', SERVICE_NAME, 'binPath=', servicePath, 'start=', 'auto', 'DisplayName=', SERVICE_NAME]);
+      sc(['description', SERVICE_NAME, SERVICE_DESCRIPTION]);
 
-        svc.install();
-      });
+      // Démarrer
+      event.sender.send('service:progress', { step: 3, total: 5, label: 'Démarrage du service…' });
+      sc(['start', SERVICE_NAME]);
     }
 
-    // 4. Attendre que le health check réponde (max 30s)
+    // 4. Attendre que le health check réponde (max 90s — pkg + SCM peuvent prendre du temps)
     let healthy = false;
-    for (let i = 0; i < 30; i++) {
-      progress(4, 5, `Démarrage du service… (${i + 1}/30)`);
+    for (let i = 0; i < 90; i++) {
+      progress(4, 5, `Démarrage du service… (${i + 1}/90)`);
       await new Promise(r => setTimeout(r, 1000));
       try {
         await axios.get(`http://127.0.0.1:${HEALTH_PORT}/health`, { timeout: 2000 });
@@ -342,4 +324,8 @@ ipcMain.handle('service:install', async (event, { sqlConfig, agentId }) => {
 ipcMain.handle('app:openDashboard', async () => {
   const url = process.env.COCKPIT_FRONT_URL || 'https://cockpit.nafakatech.com';
   await shell.openExternal(url);
+});
+
+ipcMain.handle('app:openHealthDashboard', async () => {
+  await shell.openExternal(`http://127.0.0.1:${require('../shared/constants').HEALTH_PORT}/`);
 });

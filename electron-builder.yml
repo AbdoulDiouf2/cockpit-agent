@@ -18,7 +18,7 @@ nsis:
   createStartMenuShortcut: true
   shortcutName: Cockpit Agent
   license: installer/assets/LICENSE.txt
-  requestedExecutionLevel: requireAdministrator
+  include: installer/assets/installer.nsh
   # installerHeader: installer/assets/header.bmp  # Décommenter quand header.bmp disponible
 
 files:

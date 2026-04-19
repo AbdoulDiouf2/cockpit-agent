@@ -36,8 +36,14 @@ export default function Step6_Done({ result, caps }) {
         <div className="alert alert--warning">
           <span>⚠️</span>
           <div>
-            Le service n'a pas répondu dans les 30 secondes imparties. Il est possible qu'il démarre encore.
+            Le service n'a pas répondu dans les 90 secondes imparties. Il est possible qu'il démarre encore.
             Vérifiez dans les Services Windows que <strong>CockpitAgent</strong> est démarré.
+            Vous pouvez aussi ouvrir{' '}
+            <a href="#" onClick={e => { e.preventDefault(); window.cockpit.openHealthDashboard(); }}
+               style={{ color: 'var(--accent)', textDecoration: 'underline' }}>
+              http://127.0.0.1:8444
+            </a>{' '}
+            pour vérifier le statut en temps réel.
           </div>
         </div>
       )}

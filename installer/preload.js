@@ -43,4 +43,7 @@ contextBridge.exposeInMainWorld('cockpit', {
   // ── App ───────────────────────────────────────────────────────────────────
   openDashboard: () =>
     ipcRenderer.invoke('app:openDashboard'),
+
+  openHealthDashboard: () =>
+    ipcRenderer.invoke('app:openHealthDashboard'),
 });
