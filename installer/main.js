@@ -309,22 +309,38 @@ ipcMain.handle('service:install', async (event, { sqlConfig, agentId }) => {
       // existe déjà. La copie de winsw.exe se fait DANS le script élevé, après
       // stop/uninstall (qui libère le verrou), évitant EBUSY.
       const q = (s) => s.replace(/'/g, "''");   // escape PS single-quote
+      const winswCfgSrc = path.join(process.resourcesPath, 'winsw.exe.config');
+      const winswCfgExe = path.join(daemonDir, `${SERVICE_NAME}.exe.config`);
       const psScript = path.join(daemonDir, 'install-service.ps1');
       fs.writeFileSync(psScript, [
+        `$ErrorActionPreference = 'Stop'`,
+        `$winsw    = '${q(winswExe)}'`,
+        `$winswSrc = '${q(winswSrc)}'`,
+        `$winswCfg = '${q(winswCfgSrc)}'`,
+        `$winswCfgDest = '${q(winswCfgExe)}'`,
+        `# 1. Copier winsw.exe + son .config AVANT toute opération SCM`,
+        `#    Le .config est indispensable pour que le CLR .NET charge la bonne runtime.`,
+        `Copy-Item -Force -Path $winswSrc -Destination $winsw`,
+        `if (Test-Path $winswCfg) { Copy-Item -Force -Path $winswCfg -Destination $winswCfgDest }`,
+        `# 2. Stopper + supprimer le service existant (mode Continue pour ne pas bloquer si absent)`,
         `$ErrorActionPreference = 'Continue'`,
-        `$winsw = '${q(winswExe)}'`,
-        `# 1. Stopper + supprimer via sc.exe (fonctionne quel que soit le mode d'installation précédent)`,
-        `#    et libère le verrou SCM sur CockpitAgent.exe`,
         `sc.exe stop   '${SERVICE_NAME}' 2>&1 | Out-Null`,
         `Start-Sleep -Seconds 3`,
         `sc.exe delete '${SERVICE_NAME}' 2>&1 | Out-Null`,
-        `Start-Sleep -Seconds 2`,
-        `# 2. Tuer le processus service restant (si sc.exe stop n'a pas suffi)`,
+        `# 3. Attendre que SCM confirme la suppression (max 30s)`,
+        `#    On cherche "1060" dans la sortie (compatible FR/EN : "FAILED 1060" / "échec(s) 1060")`,
+        `$waited = 0`,
+        `while ($waited -lt 30) {`,
+        `  $out = sc.exe query '${SERVICE_NAME}' 2>&1`,
+        `  if ($out -match '1060') { break }`,
+        `  Start-Sleep -Seconds 1`,
+        `  $waited++`,
+        `}`,
+        `# 4. Tuer les processus résiduels`,
         `try { Stop-Process -Name 'cockpit-agent-service' -Force 2>&1 | Out-Null } catch {}`,
+        `try { Stop-Process -Name '${SERVICE_NAME}' -Force 2>&1 | Out-Null } catch {}`,
         `Start-Sleep -Seconds 1`,
-        `# 3. Copier winsw.exe frais (verrou SCM libéré)`,
-        `Copy-Item -Force -Path '${q(winswSrc)}' -Destination $winsw`,
-        `# 4. Installer + démarrer via winsw`,
+        `# 5. Installer + démarrer via winsw`,
         `$ErrorActionPreference = 'Stop'`,
         `& $winsw install`,
         `if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }`,
@@ -332,12 +348,16 @@ ipcMain.handle('service:install', async (event, { sqlConfig, agentId }) => {
         `exit $LASTEXITCODE`,
       ].join('\r\n'), 'utf8');
 
+      // IMPORTANT: le chemin du script contient un espace ("Cockpit Agent").
+      // Start-Process -ArgumentList avec un tableau ne quote PAS automatiquement les
+      // éléments contenant des espaces → le chemin est coupé et PS ne trouve pas le script.
+      // Solution : entourer le chemin de guillemets doubles à l'intérieur du tableau.
       const psScriptQ = q(psScript);
       event.sender.send('service:progress', { step: 3, total: 5, label: 'Élévation UAC requise — acceptez l\'invite Windows…' });
       execFileSync('powershell.exe', [
         '-NonInteractive', '-NoProfile', '-Command',
         `$p = Start-Process powershell.exe -Verb RunAs -Wait -PassThru -WindowStyle Hidden` +
-        ` -ArgumentList @('-NonInteractive','-NoProfile','-ExecutionPolicy','Bypass','-File','${psScriptQ}');` +
+        ` -ArgumentList @('-NonInteractive','-NoProfile','-ExecutionPolicy','Bypass','-File','"${psScriptQ}"');` +
         ` if ($p.ExitCode -ne 0) { throw "winsw exit $($p.ExitCode)" }`,
       ], { windowsHide: false, timeout: 60000, encoding: 'utf8' });
     }
