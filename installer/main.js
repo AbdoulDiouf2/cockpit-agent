@@ -278,25 +278,47 @@ ipcMain.handle('service:install', async (event, { sqlConfig, agentId }) => {
       child.unref();
       event.sender.send('service:progress', { step: 3, total: 5, label: 'Service démarré (mode dev)…' });
     } else {
-      // En prod : enregistrement via sc.exe — cockpit-agent-service.exe est un exe pkg
-      // autonome (Node.js embarqué), pas un script .js. node-windows n'est pas adapté
-      // car il utilise process.execPath (= Electron) comme runtime Node.
+      // En prod : winsw (Windows Service Wrapper) — seule solution compatible avec un exe
+      // pkg autonome. sc.exe / node-windows échouent (error 1053) car pkg n'implémente
+      // pas le protocole SCM (SetServiceStatus). winsw agit comme proxy SCM → exe pkg.
       const { execFileSync } = require('child_process');
+      const fs = require('fs');
 
-      const sc = (args) => execFileSync('sc.exe', args, { windowsHide: true, encoding: 'utf8' });
+      // Dossier daemon : à côté de Cockpit Agent.exe (hors asar, toujours accessible en écriture)
+      const daemonDir = path.join(path.dirname(process.execPath), 'daemon');
+      fs.mkdirSync(daemonDir, { recursive: true });
 
-      // Arrêter + supprimer le service existant proprement (ignore les erreurs si absent)
-      try { sc(['stop', SERVICE_NAME]); await new Promise(r => setTimeout(r, 2000)); } catch (_) {}
-      try { sc(['delete', SERVICE_NAME]); await new Promise(r => setTimeout(r, 1000)); } catch (_) {}
+      // winsw.exe livré dans resources — renommé en CockpitAgent.exe (convention winsw : exe + xml même nom)
+      const winswSrc = path.join(process.resourcesPath, 'winsw.exe');
+      const winswExe = path.join(daemonDir, `${SERVICE_NAME}.exe`);
+      fs.copyFileSync(winswSrc, winswExe);
 
-      // Créer le service avec le chemin absolu vers l'exe pkg
+      // XML de configuration winsw
+      const xmlContent = [
+        '<service>',
+        `  <id>${SERVICE_NAME}</id>`,
+        `  <name>${SERVICE_NAME}</name>`,
+        `  <description>${SERVICE_DESCRIPTION}</description>`,
+        `  <executable>${servicePath}</executable>`,
+        '  <logmode>rotate</logmode>',
+        '  <stoptimeout>30sec</stoptimeout>',
+        '</service>',
+      ].join('\r\n');
+      fs.writeFileSync(path.join(daemonDir, `${SERVICE_NAME}.xml`), xmlContent, 'utf8');
+
+      const winsw = (args) => execFileSync(winswExe, args, { windowsHide: true, encoding: 'utf8' });
+
+      // Arrêter + désinstaller l'ancienne instance (ignore si absent)
+      try { winsw(['stop']);      await new Promise(r => setTimeout(r, 2000)); } catch (_) {}
+      try { winsw(['uninstall']); await new Promise(r => setTimeout(r, 1000)); } catch (_) {}
+
+      // Enregistrer le service via winsw
       event.sender.send('service:progress', { step: 3, total: 5, label: 'Enregistrement du service Windows…' });
-      sc(['create', SERVICE_NAME, 'binPath=', servicePath, 'start=', 'auto', 'DisplayName=', SERVICE_NAME]);
-      sc(['description', SERVICE_NAME, SERVICE_DESCRIPTION]);
+      winsw(['install']);
 
       // Démarrer
       event.sender.send('service:progress', { step: 3, total: 5, label: 'Démarrage du service…' });
-      sc(['start', SERVICE_NAME]);
+      winsw(['start']);
     }
 
     // 4. Attendre que le health check réponde (max 90s — pkg + SCM peuvent prendre du temps)

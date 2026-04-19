@@ -43,6 +43,8 @@ asarUnpack:
 extraResources:
   - from: dist/service/cockpit-agent-service.exe
     to: service/dist/cockpit-agent-service.exe
+  - from: node_modules/node-windows/bin/winsw/winsw.exe
+    to: winsw.exe
 
 directories:
   output: dist/installer
