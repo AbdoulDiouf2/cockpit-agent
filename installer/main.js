@@ -12,6 +12,15 @@
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path    = require('path');
 
+// Empêcher le dialog natif Electron "A JavaScript error occurred in the main process"
+// Les erreurs sont loggées en console et retournées comme erreurs IPC classiques.
+process.on('uncaughtException', (err) => {
+  console.error('[main] uncaughtException:', err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[main] unhandledRejection:', reason);
+});
+
 // Charger les variables d'environnement depuis .env.dev en mode développement
 const IS_DEV_EARLY = !app.isPackaged;
 if (IS_DEV_EARLY) {
@@ -278,16 +287,31 @@ ipcMain.handle('service:install', async (event, { sqlConfig, agentId }) => {
         });
 
         const timeout = setTimeout(() => {
+          settled = true;
           reject(new Error("Timeout installation service (30s). Vérifiez que l'installeur est lancé en tant qu'Administrateur."));
         }, 30000);
 
-        const done = () => { clearTimeout(timeout); resolve(); };
-        const fail = (err) => { clearTimeout(timeout); reject(err); };
+        // Garde settled pour éviter double resolve/reject si svc.start() émet 'error'
+        // après que done() a déjà résolu la promesse.
+        let settled = false;
+        const done = () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          resolve();
+        };
+        const fail = (err) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          const error = err instanceof Error ? err : new Error(err ? String(err) : 'Erreur inconnue lors de l\'installation du service');
+          reject(error);
+        };
 
         svc.on('install',             () => { event.sender.send('service:progress', { step: 3, total: 5, label: 'Service installé, démarrage…' }); svc.start(); done(); });
         svc.on('alreadyinstalled',    () => { event.sender.send('service:progress', { step: 3, total: 5, label: 'Service déjà installé, redémarrage…' }); svc.start(); done(); });
         svc.on('invalidinstallation', () => fail(new Error('Installation invalide — supprimez le service existant et réessayez.')));
-        svc.on('error', fail);
+        svc.on('error',               (err) => fail(err));
 
         svc.install();
       });
@@ -308,7 +332,8 @@ ipcMain.handle('service:install', async (event, { sqlConfig, agentId }) => {
     progress(5, 5, healthy ? 'Service opérationnel ✓' : 'Service installé (health check timeout)');
     return { success: true, healthy };
   } catch (err) {
-    return { success: false, error: err.message };
+    const message = err?.message ?? (err ? String(err) : 'Erreur inconnue lors de l\'installation');
+    return { success: false, error: message };
   }
 });
 
