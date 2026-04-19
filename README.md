@@ -17,10 +17,11 @@ Architecture push HTTPS : l'agent initie toutes les communications, aucun port e
 8. [Cycle de synchronisation](#8-cycle-de-synchronisation)
 9. [Sécurité](#9-sécurité)
 10. [Health check](#10-health-check)
-11. [Logs](#11-logs)
-12. [Commandes distantes](#12-commandes-distantes)
-13. [Détection version Sage 100](#13-détection-version-sage-100)
-14. [Références](#14-références)
+11. [Gestion des erreurs SQL](#11-gestion-des-erreurs-sql)
+12. [Logs](#12-logs)
+13. [Commandes distantes](#13-commandes-distantes)
+14. [Détection version Sage 100](#14-détection-version-sage-100)
+15. [Références](#15-références)
 
 ---
 
@@ -287,15 +288,25 @@ L'installeur guide l'utilisateur en 6 étapes :
 
 1. Sauvegarde le mot de passe SQL dans **Windows Credential Manager** (keytar)
 2. Écrit `config.json` avec la configuration SQL et l'agent ID
-3. Installe le service Windows `CockpitAgent` via node-windows
-4. Attend le health check `GET http://127.0.0.1:8444/health` (timeout 30s)
+3. Écrit `CockpitAgent.xml` (configuration winsw) dans le dossier du service
+4. Exécute un script PowerShell **élevé** (`Start-Process -Verb RunAs`) qui :
+   - Arrête et supprime l'éventuel service précédent via `sc.exe stop/delete` (libère le verrou SCM sur l'exe)
+   - Copie `winsw.exe` → `CockpitAgent.exe` (le SCM lock est désormais libéré)
+   - Lance `CockpitAgent.exe install` puis `CockpitAgent.exe start`
+5. Attend le health check `GET http://127.0.0.1:8444/health` (timeout 30s)
+
+> **Pourquoi winsw ?** Le binaire compilé par `pkg` n'implémente pas le protocole SCM Windows (pas de `SetServiceStatus(SERVICE_RUNNING)`) → Windows renvoie l'erreur 1053. `winsw` sert de wrapper qui parle correctement au SCM et délègue l'exécution au `.exe` pkg.
+
+> **Pourquoi l'élévation UAC ?** L'installeur NSIS lance Electron de-elevated pour éviter que l'interface graphique ne tourne en mode admin. L'opération d'installation du service nécessite elle des droits admin → on demande l'UAC ponctuellement via PowerShell.
 
 ### Désinstallation manuelle
 
-```bash
-node service/src/windows-service.js uninstall
-# ou via les Services Windows (services.msc)
+```powershell
+sc.exe stop   CockpitAgent
+sc.exe delete CockpitAgent
+# Supprimer ensuite le dossier d'installation
 ```
+
 
 ---
 
@@ -437,7 +448,22 @@ GET http://127.0.0.1:8444/health
 
 ---
 
-## 11. Logs
+## 11. Gestion des erreurs SQL
+
+Les drivers ODBC Windows (`msnodesqlv8`) peuvent retourner des erreurs dont la propriété `message` est elle-même un objet (pas une chaîne). Le gestionnaire d'événements `execute_sql` dans `ws/agent-socket.js` applique une sérialisation défensive :
+
+```
+err.message (string)    → utilisé tel quel
+err.message (objet)     → JSON.stringify
+err instanceof Error    → err.toString()
+autre                   → JSON.stringify(err, Object.getOwnPropertyNames(err))
+```
+
+Cela garantit que le backend reçoit toujours un message d'erreur lisible (jamais `[object Object]`).
+
+---
+
+## 12. Logs
 
 Stockés dans `%AppData%\CockpitAgent\logs\` (ou le dossier d'installation).
 
@@ -451,7 +477,7 @@ Stockés dans `%AppData%\CockpitAgent\logs\` (ou le dossier d'installation).
 
 ---
 
-## 12. Commandes distantes
+## 13. Commandes distantes
 
 La plateforme peut envoyer des commandes à l'agent via la réponse du heartbeat :
 
@@ -477,7 +503,7 @@ Authorization: Bearer <JWT>
 
 ---
 
-## 13. Détection version Sage 100
+## 14. Détection version Sage 100
 
 Le détecteur interroge `INFORMATION_SCHEMA.COLUMNS` (sans exécuter de SQL métier) pour identifier la version :
 
@@ -497,7 +523,7 @@ Les capacités détectées sont persistées dans `PLATEFORME_PARAMS` sous les cl
 
 ---
 
-## 14. Références
+## 15. Références
 
 | Document | Emplacement |
 |----------|-------------|
