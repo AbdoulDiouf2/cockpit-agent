@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 
 const INITIAL = {
-  sageType:       '100',
-  server:         '',
-  port:           '',
-  instance:       '',
-  database:       '',
-  useWindowsAuth: false,
-  user:           '',
-  password:       '',
+  sageType:        '100',
+  server:          '',
+  port:            '',
+  instance:        '',
+  database:        '',
+  useWindowsAuth:  false,
+  user:            '',
+  password:        '',
+  windowsPassword: '', // Requis quand useWindowsAuth=true pour que le service s'exécute sous ce compte
 };
 
 export default function Step2_Database({ onNext, onBack }) {
@@ -34,6 +35,9 @@ export default function Step2_Database({ onNext, onBack }) {
   }
 
   const canTest = form.server && form.database && (form.useWindowsAuth || (form.user && form.password));
+  const canNext = result?.success && (!form.useWindowsAuth || form.windowsPassword);
+
+  const winInfo = window.cockpit.windowsUser;
 
   return (
     <div className="step">
@@ -98,6 +102,24 @@ export default function Step2_Database({ onNext, onBack }) {
         </div>
       )}
 
+      {form.useWindowsAuth && (
+        <div className="form-group">
+          <label className="form-label">
+            Mot de passe Windows
+            <span style={{ fontWeight: 'normal', color: '#666', marginLeft: '6px' }}>
+              (compte {winInfo.domain}\{winInfo.user})
+            </span>
+          </label>
+          <input className="form-input" type="password" autoComplete="current-password"
+            placeholder="Mot de passe de votre session Windows"
+            value={form.windowsPassword} onChange={e => set('windowsPassword', e.target.value)} />
+          <small style={{ color: '#888', marginTop: '4px', display: 'block' }}>
+            Le service Windows s'exécutera sous votre compte pour accéder à SQL Server
+            via l'authentification Windows intégrée.
+          </small>
+        </div>
+      )}
+
       {result && (
         <div className={`alert alert--${result.success ? 'success' : 'error'}`}>
           <span>{result.success ? '✅' : '❌'}</span>
@@ -116,7 +138,7 @@ export default function Step2_Database({ onNext, onBack }) {
           <button className="btn btn--secondary" onClick={handleTest} disabled={!canTest || testing}>
             {testing ? '⏳ Test en cours…' : '🔌 Tester la connexion'}
           </button>
-          <button className="btn btn--primary" onClick={handleNext} disabled={!result?.success}>
+          <button className="btn btn--primary" onClick={handleNext} disabled={!canNext}>
             Suivant →
           </button>
         </div>

@@ -40,6 +40,13 @@ contextBridge.exposeInMainWorld('cockpit', {
     return () => ipcRenderer.removeListener('service:progress', handler);
   },
 
+  // ── Système ───────────────────────────────────────────────────────────────
+  // Compte Windows courant (pré-rempli dans l'UI quand Windows Auth est sélectionné)
+  windowsUser: {
+    domain: process.env.USERDOMAIN || '.',
+    user:   process.env.USERNAME   || '',
+  },
+
   // ── App ───────────────────────────────────────────────────────────────────
   openDashboard: () =>
     ipcRenderer.invoke('app:openDashboard'),

@@ -292,16 +292,29 @@ ipcMain.handle('service:install', async (event, { sqlConfig, agentId }) => {
       const winswExe = path.join(daemonDir, `${SERVICE_NAME}.exe`);
 
       // XML : toujours écrasable (pas de verrou SCM dessus)
-      const xmlContent = [
+      // Quand Windows Auth est utilisée, le service DOIT tourner sous le compte Windows
+      // courant (pas LocalSystem) pour que SSPI puisse négocier l'accès SQL Server.
+      const xmlLines = [
         '<service>',
         `  <id>${SERVICE_NAME}</id>`,
         `  <name>${SERVICE_NAME}</name>`,
         `  <description>${SERVICE_DESCRIPTION}</description>`,
         `  <executable>${servicePath}</executable>`,
-        '  <logmode>rotate</logmode>',
-        '  <stoptimeout>30sec</stoptimeout>',
-        '</service>',
-      ].join('\r\n');
+      ];
+      if (sqlConfig.useWindowsAuth && sqlConfig.windowsPassword) {
+        const saDomain = process.env.USERDOMAIN || '.';
+        const saUser   = process.env.USERNAME   || '';
+        xmlLines.push(
+          '  <serviceaccount>',
+          `    <domain>${saDomain}</domain>`,
+          `    <user>${saUser}</user>`,
+          `    <password>${sqlConfig.windowsPassword}</password>`,
+          '    <allowservicelogon>true</allowservicelogon>',
+          '  </serviceaccount>',
+        );
+      }
+      xmlLines.push('  <logmode>rotate</logmode>', '  <stoptimeout>30sec</stoptimeout>', '</service>');
+      const xmlContent = xmlLines.join('\r\n');
       fs.writeFileSync(path.join(daemonDir, `${SERVICE_NAME}.xml`), xmlContent, 'utf8');
 
       // L'app Electron est lancée de-élevée par NSIS → winsw (WMI) nécessite admin.
