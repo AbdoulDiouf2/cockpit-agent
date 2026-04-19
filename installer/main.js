@@ -184,7 +184,7 @@ ipcMain.handle('sql:deploy', async (event) => {
 
 ipcMain.handle('api:validate', async (_, { email, token }) => {
   try {
-    const platformUrl = process.env.COCKPIT_URL || 'https://api.cockpit.app';
+    const platformUrl = process.env.COCKPIT_URL || 'https://cockpit.nafakatech.com';
     const machineId   = machineIdSync();
 
     // Collecter les tables Sage détectées si disponible
@@ -242,7 +242,7 @@ ipcMain.handle('service:install', async (event, { sqlConfig, agentId }) => {
       sql_use_windows_auth: sqlConfig.useWindowsAuth,
       sql_user:             sqlConfig.user || null,
       agent_id:             agentId,
-      platform_url:         process.env.COCKPIT_URL || 'https://api.cockpit.app',
+      platform_url:         process.env.COCKPIT_URL || 'https://cockpit.nafakatech.com',
       allowed_tables:       _detectedTables,
       max_rows:             1000,
       query_timeout:        5,
@@ -315,6 +315,6 @@ ipcMain.handle('service:install', async (event, { sqlConfig, agentId }) => {
 // ─── IPC : Ouvrir le portail dans le navigateur ───────────────────────────────
 
 ipcMain.handle('app:openDashboard', async () => {
-  const url = process.env.COCKPIT_FRONT_URL || 'https://app.cockpit.app';
+  const url = process.env.COCKPIT_FRONT_URL || 'https://cockpit.nafakatech.com';
   await shell.openExternal(url);
 });

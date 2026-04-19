@@ -55,7 +55,12 @@ console.log(`Config : ${ebConfig}`);
 execSync('npx electron-builder --config electron-builder.yml --win', {
   cwd: ROOT,
   stdio: 'inherit',
-  env: { ...process.env, SERVICE_EXE_PATH: svcExe },
+  env: {
+    ...process.env,
+    SERVICE_EXE_PATH:   svcExe,
+    COCKPIT_URL:        process.env.COCKPIT_URL        || 'https://cockpit.nafakatech.com',
+    COCKPIT_FRONT_URL:  process.env.COCKPIT_FRONT_URL  || 'https://cockpit.nafakatech.com',
+  },
 });
 
 console.log('\n✅ Build terminé — installeur disponible dans dist/installer/');
