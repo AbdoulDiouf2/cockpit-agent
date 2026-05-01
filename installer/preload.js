@@ -53,4 +53,49 @@ contextBridge.exposeInMainWorld('cockpit', {
 
   openHealthDashboard: () =>
     ipcRenderer.invoke('app:openHealthDashboard'),
+
+  // ── Gestion (mode post-installation) ─────────────────────────────────────
+  checkInstalled: () =>
+    ipcRenderer.invoke('app:checkInstalled'),
+
+  getAgentStatus: () =>
+    ipcRenderer.invoke('app:getAgentStatus'),
+
+  updateToken: (token) =>
+    ipcRenderer.invoke('app:updateToken', { token }),
+
+  restartService: () =>
+    ipcRenderer.invoke('app:restartService'),
+
+  // ── Logs temps réel ───────────────────────────────────────────────────────
+  getLogs: () =>
+    ipcRenderer.invoke('app:getLogs'),
+
+  startLogStream: () =>
+    ipcRenderer.invoke('app:startLogStream'),
+
+  stopLogStream: () =>
+    ipcRenderer.invoke('app:stopLogStream'),
+
+  onLogLines: (callback) => {
+    const handler = (_, lines) => callback(lines);
+    ipcRenderer.on('logs:lines', handler);
+    return () => ipcRenderer.removeListener('logs:lines', handler);
+  },
+
+  // ── Mise à jour automatique ───────────────────────────────────────────────
+  checkForUpdate: () =>
+    ipcRenderer.invoke('app:checkForUpdate'),
+
+  downloadUpdate: (fileUrl, checksum) =>
+    ipcRenderer.invoke('app:downloadUpdate', { fileUrl, checksum }),
+
+  applyUpdate: (tmpPath) =>
+    ipcRenderer.invoke('app:applyUpdate', { tmpPath }),
+
+  onUpdateProgress: (callback) => {
+    const handler = (_, data) => callback(data);
+    ipcRenderer.on('update:progress', handler);
+    return () => ipcRenderer.removeListener('update:progress', handler);
+  },
 });

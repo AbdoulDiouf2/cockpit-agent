@@ -19,7 +19,7 @@
  */
 
 const { io }    = require('socket.io-client');
-const { getToken, getPlatformUrl } = require('../security/token');
+const { getToken, saveToken, getPlatformUrl } = require('../security/token');
 const { getPool }      = require('../sql/connection');
 const transformer      = require('../sync/transformer');
 const { validate, SQLSecurityError } = require('../jobs/sql-security');
@@ -113,6 +113,28 @@ function connect() {
     // Envoyer la configuration Sage locale au backend pour éviter la double saisie
     // lors de l'onboarding (le backend met à jour l'organisation et auto-complète le step 3)
     _sendAgentConfig();
+  });
+
+  // ─── token_renewal ────────────────────────────────────────────────────────
+  // Reçu quand le backend renouvelle automatiquement le token (J-7 avant expiration).
+  // On persiste le nouveau token chiffré puis on force une reconnexion pour l'activer.
+  _socket.on('token_renewal', ({ newToken, expiresAt }) => {
+    try {
+      saveToken(newToken);
+      logger.info(`[ws] Token renouvelé automatiquement. Expire le ${expiresAt}`);
+      sendLog('info', `Token renouvelé automatiquement par la plateforme (expire le ${expiresAt})`);
+    } catch (err) {
+      logger.error(`[ws] Impossible de sauvegarder le nouveau token : ${err.message}`);
+      return;
+    }
+    // Reconnexion avec le nouveau token après un court délai
+    setTimeout(() => {
+      if (_socket) {
+        _socket.disconnect();
+        _socket = null;
+      }
+      connect();
+    }, 1500);
   });
 
   _socket.on('disconnect', (reason) => {

@@ -1,6 +1,6 @@
 {
   "name": "cockpit-agent",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Agent On-Premises Cockpit — Synchronisation Sage 100 vers la plateforme BI",
   "author": "Nafaka Tech <contact@cockpit.app>",
   "main": "installer/main.js",

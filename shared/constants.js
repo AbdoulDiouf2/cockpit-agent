@@ -2,7 +2,7 @@
 
 // ─── Plateforme SaaS ──────────────────────────────────────────────────────────
 const PLATFORM_URL = process.env.COCKPIT_URL || 'https://cockpit.nafakatech.com';
-const AGENT_VERSION = '1.0.0';
+const AGENT_VERSION = '1.1.0';
 
 // ─── Vues Sage 100 synchronisées ─────────────────────────────────────────────
 const VIEWS = {

@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
-import Step1_Welcome    from './steps/Step1_Welcome.jsx';
-import Step2_Database   from './steps/Step2_Database.jsx';
-import Step3_Detection  from './steps/Step3_Detection.jsx';
-import Step4_Views      from './steps/Step4_Views.jsx';
-import Step5_Token      from './steps/Step5_Token.jsx';
-import Step6_Done       from './steps/Step6_Done.jsx';
+import React, { useState, useEffect } from 'react';
+import Step1_Welcome       from './steps/Step1_Welcome.jsx';
+import Step2_Database      from './steps/Step2_Database.jsx';
+import Step3_Detection     from './steps/Step3_Detection.jsx';
+import Step4_Views         from './steps/Step4_Views.jsx';
+import Step5_Token         from './steps/Step5_Token.jsx';
+import Step6_Done          from './steps/Step6_Done.jsx';
+import ManagementDashboard from './ManagementDashboard.jsx';
 
 const STEPS = [
   { id: 1, label: 'Bienvenue'   },
@@ -16,11 +17,21 @@ const STEPS = [
 ];
 
 export default function App() {
+  const [checkDone, setCheckDone]       = useState(false);
+  const [installedConfig, setInstalledConfig] = useState(null); // non-null → mode gestion
+
   const [step, setStep]           = useState(1);
   const [sqlConfig, setSqlConfig] = useState(null);
   const [caps, setCaps]           = useState(null);
   const [agentId, setAgentId]     = useState(null);
   const [installResult, setInstallResult] = useState(null);
+
+  useEffect(() => {
+    window.cockpit.checkInstalled().then(({ installed, config }) => {
+      if (installed) setInstalledConfig(config);
+      setCheckDone(true);
+    }).catch(() => setCheckDone(true));
+  }, []);
 
   const next = () => setStep(s => Math.min(s + 1, 6));
   const prev = () => setStep(s => Math.max(s - 1, 1));
@@ -38,6 +49,21 @@ export default function App() {
     }
   }
 
+  // Attente de la détection avant tout render
+  if (!checkDone) {
+    return (
+      <div className="installer" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ color: 'var(--text-muted)', fontSize: 14 }}>Chargement…</span>
+      </div>
+    );
+  }
+
+  // Mode gestion : agent déjà installé
+  if (installedConfig) {
+    return <ManagementDashboard config={installedConfig} onReinstall={() => setInstalledConfig(null)} />;
+  }
+
+  // Mode installation : wizard classique
   return (
     <div className="installer">
       {/* Header */}

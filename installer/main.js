@@ -89,10 +89,12 @@ function createWindow() {
   return win;
 }
 
+let _win = null;
+
 app.whenReady().then(() => {
-  createWindow();
+  _win = createWindow();
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) _win = createWindow();
   });
 });
 
@@ -404,4 +406,302 @@ ipcMain.handle('app:openDashboard', async () => {
 
 ipcMain.handle('app:openHealthDashboard', async () => {
   await shell.openExternal(`http://127.0.0.1:${require('../shared/constants').HEALTH_PORT}/`);
+});
+
+// ─── IPC : Détection installation existante ───────────────────────────────────
+
+ipcMain.handle('app:checkInstalled', () => {
+  try {
+    const { getToken } = require('./lib/token');
+    const fs = require('fs');
+
+    getToken(); // throws si .cockpit_token absent ou illisible
+
+    // En prod (packaged) : config.json est dans resources/service/dist/
+    // En dev             : dans cockpit-agent/service/config.json
+    const configPath = app.isPackaged
+      ? path.join(process.resourcesPath, 'service', 'dist', 'config.json')
+      : path.join(__dirname, '..', 'service', 'config.json');
+
+    if (!fs.existsSync(configPath)) return { installed: false };
+    const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+
+    return {
+      installed: true,
+      config: {
+        sql_server:           cfg.sql_server   || null,
+        sql_port:             cfg.sql_port     || null,
+        sql_instance:         cfg.sql_instance || null,
+        sql_database:         cfg.sql_database || null,
+        sql_use_windows_auth: cfg.sql_use_windows_auth || false,
+        sql_user:             cfg.sql_user     || null,
+        agent_id:             cfg.agent_id     || null,
+        sage_type:            cfg.sage_type    || null,
+        sage_version:         cfg.sage_version || null,
+        platform_url:         cfg.platform_url || null,
+      },
+    };
+  } catch (_) {
+    return { installed: false };
+  }
+});
+
+// ─── IPC : Statut live de l'agent (127.0.0.1:8444/status) ────────────────────
+
+ipcMain.handle('app:getAgentStatus', async () => {
+  try {
+    const res = await axios.get(
+      `http://127.0.0.1:${HEALTH_PORT}/status`,
+      { timeout: 3000 },
+    );
+    return { online: true, status: res.data };
+  } catch (_) {
+    return { online: false, status: null };
+  }
+});
+
+// ─── IPC : Mise à jour manuelle du token ─────────────────────────────────────
+
+ipcMain.handle('app:updateToken', async (_, { token }) => {
+  // Validation format : isag_ suivi de 48 caractères hex
+  if (!/^isag_[0-9a-f]{48}$/.test(token)) {
+    return { success: false, error: 'Format de token invalide (attendu : isag_ + 48 caractères hex)' };
+  }
+  try {
+    const { saveToken } = require('./lib/token');
+    saveToken(token);
+  } catch (err) {
+    return { success: false, error: `Impossible de sauvegarder le token : ${err.message}` };
+  }
+  // Redémarrage du service (best-effort, sans UAC — l'utilisateur a les droits s'il a installé)
+  try {
+    const { execSync } = require('child_process');
+    execSync(`sc.exe stop ${SERVICE_NAME}`,  { timeout: 10000, stdio: 'ignore' });
+    execSync(`sc.exe start ${SERVICE_NAME}`, { timeout: 10000, stdio: 'ignore' });
+    return { success: true };
+  } catch (err) {
+    // Token sauvegardé mais redémarrage échoué → informer l'utilisateur
+    return { success: true, restartWarning: 'Token mis à jour. Redémarrez le service manuellement depuis les Services Windows.' };
+  }
+});
+
+// ─── IPC : Redémarrage du service ─────────────────────────────────────────────
+
+ipcMain.handle('app:restartService', async () => {
+  try {
+    const { execSync } = require('child_process');
+    execSync(`sc.exe stop ${SERVICE_NAME}`,  { timeout: 10000, stdio: 'ignore' });
+    execSync(`sc.exe start ${SERVICE_NAME}`, { timeout: 10000, stdio: 'ignore' });
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// ─── IPC : Logs temps réel ────────────────────────────────────────────────────
+
+// Chemin du répertoire de logs selon l'environnement
+function _getLogDir() {
+  if (IS_DEV) return path.join(__dirname, '..', 'service', 'logs');
+  return path.join(process.resourcesPath, 'service', 'dist', 'logs');
+}
+
+// Fichier log du jour courant
+function _getTodayLogFile() {
+  const fs = require('fs');
+  const dir = _getLogDir();
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const p = path.join(dir, `cockpit-agent-${today}.log`);
+  return fs.existsSync(p) ? p : null;
+}
+
+// Parse une ligne de log : "2026-05-01 14:32:10 [INFO] message..."
+const LOG_RE = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[(\w+)\] (.+)$/;
+function _parseLine(line) {
+  const m = line.match(LOG_RE);
+  if (!m) return line ? { timestamp: '', level: 'info', message: line } : null;
+  return { timestamp: m[1], level: m[2].toLowerCase(), message: m[3] };
+}
+
+// Lecture des N dernières lignes d'un fichier
+function _tail(filePath, n = 200) {
+  const fs = require('fs');
+  try {
+    const content = fs.readFileSync(filePath, 'utf8');
+    const lines = content.split('\n').filter(Boolean);
+    return lines.slice(-n).map(_parseLine).filter(Boolean);
+  } catch (_) {
+    return [];
+  }
+}
+
+// Watcher actif (1 seul à la fois)
+let _logWatcher   = null;
+let _logFileSize  = 0;
+let _watchedFile  = null;
+
+ipcMain.handle('app:getLogs', () => {
+  const file = _getTodayLogFile();
+  if (!file) return { lines: [], file: null };
+  return { lines: _tail(file, 200), file };
+});
+
+ipcMain.handle('app:startLogStream', () => {
+  const fs   = require('fs');
+  const file = _getTodayLogFile();
+  if (!file || !_win) return { ok: false };
+
+  // Initialiser la position à la fin du fichier
+  try { _logFileSize = fs.statSync(file).size; } catch (_) { _logFileSize = 0; }
+  _watchedFile = file;
+
+  _logWatcher = fs.watchFile(file, { interval: 800, persistent: false }, () => {
+    if (!_win || _win.isDestroyed()) return;
+    try {
+      const stat = fs.statSync(file);
+      if (stat.size <= _logFileSize) return; // truncation ou pas de changement
+      const fd  = fs.openSync(file, 'r');
+      const len = stat.size - _logFileSize;
+      const buf = Buffer.alloc(len);
+      fs.readSync(fd, buf, 0, len, _logFileSize);
+      fs.closeSync(fd);
+      _logFileSize = stat.size;
+      const newLines = buf.toString('utf8').split('\n')
+        .filter(Boolean).map(_parseLine).filter(Boolean);
+      if (newLines.length) _win.webContents.send('logs:lines', newLines);
+    } catch (_) {}
+  });
+
+  return { ok: true, file };
+});
+
+ipcMain.handle('app:stopLogStream', () => {
+  const fs = require('fs');
+  if (_logWatcher && _watchedFile) {
+    fs.unwatchFile(_watchedFile);
+    _logWatcher  = null;
+    _watchedFile = null;
+  }
+  return { ok: true };
+});
+
+// ─── IPC : Vérification mise à jour ──────────────────────────────────────────
+
+ipcMain.handle('app:checkForUpdate', async () => {
+  try {
+    const fs = require('fs');
+    const { getToken }      = require('./lib/token');
+    const { AGENT_VERSION } = require('../shared/constants');
+    const token = getToken();
+
+    const configPath = app.isPackaged
+      ? path.join(process.resourcesPath, 'service', 'dist', 'config.json')
+      : path.join(__dirname, '..', 'service', 'config.json');
+    if (!fs.existsSync(configPath)) return { hasUpdate: false };
+    const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    const platformUrl = cfg.platform_url || require('../shared/constants').PLATFORM_URL;
+
+    const res = await axios.get(`${platformUrl}/api/v1/agent/check-update`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'X-Agent-Version': AGENT_VERSION,
+      },
+      timeout: 8000,
+    });
+    return res.data;
+  } catch (_) {
+    return { hasUpdate: false };
+  }
+});
+
+// ─── IPC : Téléchargement de la mise à jour ───────────────────────────────────
+
+ipcMain.handle('app:downloadUpdate', async (_, { fileUrl, checksum }) => {
+  const https  = require('https');
+  const http   = require('http');
+  const fs     = require('fs');
+  const os     = require('os');
+  const crypto = require('crypto');
+
+  const tmpPath = path.join(os.tmpdir(), `cockpit-agent-update-${Date.now()}.exe`);
+
+  return new Promise((resolve) => {
+    const protocol = fileUrl.startsWith('https') ? https : http;
+    const req = protocol.get(fileUrl, (res) => {
+      if (res.statusCode !== 200) {
+        return resolve({ success: false, error: `HTTP ${res.statusCode}` });
+      }
+      const total    = parseInt(res.headers['content-length'] || '0', 10);
+      let received   = 0;
+      const dest     = fs.createWriteStream(tmpPath);
+      const hash     = crypto.createHash('sha256');
+
+      res.on('data', (chunk) => {
+        received += chunk.length;
+        hash.update(chunk);
+        if (total > 0 && _win && !_win.isDestroyed()) {
+          _win.webContents.send('update:progress', { percent: Math.round((received / total) * 100) });
+        }
+      });
+      res.pipe(dest);
+      dest.on('finish', () => {
+        const actual = hash.digest('hex');
+        if (checksum && actual.toLowerCase() !== checksum.toLowerCase()) {
+          try { fs.unlinkSync(tmpPath); } catch (_) {}
+          return resolve({ success: false, error: `Checksum invalide.\nAttendu : ${checksum}\nObtenu  : ${actual}` });
+        }
+        resolve({ success: true, tmpPath });
+      });
+      dest.on('error', (err) => resolve({ success: false, error: err.message }));
+    });
+    req.on('error', (err) => resolve({ success: false, error: err.message }));
+  });
+});
+
+// ─── IPC : Application de la mise à jour (UAC + stop/copy/start) ─────────────
+
+ipcMain.handle('app:applyUpdate', async (_, { tmpPath }) => {
+  if (!app.isPackaged) {
+    return { success: false, error: 'Mise à jour non disponible en mode développement.' };
+  }
+  try {
+    const fs  = require('fs');
+    const os  = require('os');
+    const { execFileSync } = require('child_process');
+
+    if (!fs.existsSync(tmpPath)) {
+      return { success: false, error: 'Fichier de mise à jour introuvable.' };
+    }
+
+    const servicePath = path.join(process.resourcesPath, 'service', 'dist', 'cockpit-agent-service.exe');
+    const psScript    = path.join(os.tmpdir(), `cockpit-update-${Date.now()}.ps1`);
+
+    // Escape backslashes pour PowerShell double-quoted string
+    const esc = (s) => s.replace(/\\/g, '\\\\');
+    const psContent = [
+      `sc.exe stop ${SERVICE_NAME} | Out-Null`,
+      `Start-Sleep -Seconds 3`,
+      `Copy-Item -Path "${esc(tmpPath)}" -Destination "${esc(servicePath)}" -Force`,
+      `sc.exe start ${SERVICE_NAME} | Out-Null`,
+    ].join('\r\n');
+
+    fs.writeFileSync(psScript, psContent, 'utf8');
+
+    const q         = (s) => s.replace(/'/g, "''");
+    const psScriptQ = q(psScript);
+
+    execFileSync('powershell.exe', [
+      '-NonInteractive', '-NoProfile', '-Command',
+      `$p = Start-Process powershell.exe -Verb RunAs -Wait -PassThru -WindowStyle Hidden` +
+      ` -ArgumentList @('-NonInteractive','-NoProfile','-ExecutionPolicy','Bypass','-File','"${psScriptQ}"');` +
+      ` if ($p.ExitCode -ne 0) { throw "apply-update exit $($p.ExitCode)" }`,
+    ], { windowsHide: false, timeout: 60000, encoding: 'utf8' });
+
+    try { fs.unlinkSync(tmpPath);  } catch (_) {}
+    try { fs.unlinkSync(psScript); } catch (_) {}
+
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
 });

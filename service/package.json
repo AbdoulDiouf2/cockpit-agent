@@ -1,6 +1,6 @@
 {
   "name": "cockpit-agent-service",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Service Windows de synchronisation Cockpit ↔ Sage 100",
   "main": "src/index.js",
   "scripts": {
