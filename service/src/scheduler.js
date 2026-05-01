@@ -18,11 +18,13 @@ let _heartbeatJob = null;
 function start() {
   const uploader = require('./sync/uploader');
 
-  // Heartbeat toutes les minutes (seuil offline backend = 2 min)
-  _heartbeatJob = schedule.scheduleJob('* * * * *', async () => {
+  // Heartbeat toutes les 5 minutes (seuil offline backend = 10 min)
+  _heartbeatJob = schedule.scheduleJob('*/5 * * * *', async () => {
     try {
       const wsStats = require('./ws/agent-socket').getStats();
-      const status  = wsStats.errorCount > 0 ? 'error' : 'online';
+      // Le statut reflète la connectivité WebSocket, pas les erreurs SQL applicatives.
+      // Les erreurs SQL sont tracées dans les jobs (AgentJob) et les logs.
+      const status = wsStats.connected ? 'online' : 'offline';
 
       await uploader.sendHeartbeat(status, null, 0, {
         errorCount: wsStats.errorCount,
@@ -45,7 +47,7 @@ function start() {
     }
   });
 
-  logger.info('[scheduler] Démarré — heartbeat 1min (mode Zero-Copy)');
+  logger.info('[scheduler] Démarré — heartbeat 5min (mode Zero-Copy)');
 }
 
 function stop() {
