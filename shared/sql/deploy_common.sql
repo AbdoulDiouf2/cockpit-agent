@@ -2,173 +2,269 @@
 -- COCKPIT AGENT — deploy_common.sql
 -- Tables de configuration + tables de référence créées par l'agent.
 -- Ces tables ne touchent AUCUNE donnée Sage métier.
+-- Aligné sur DEPLOY_PLATEFORME_SAGE100_v1.1.sql
 -- =============================================================================
 
--- Table de configuration générale de l'agent
-IF NOT EXISTS (
-    SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'PLATEFORME_PARAMS'
-)
-BEGIN
-    CREATE TABLE dbo.PLATEFORME_PARAMS (
-        Param_Cle    NVARCHAR(100)  NOT NULL PRIMARY KEY,
-        Param_Valeur NVARCHAR(2000) NULL,
-        Param_Type   NVARCHAR(50)   NULL,
-        Description  NVARCHAR(500)  NULL,
-        Date_Modif   DATETIME       NOT NULL DEFAULT GETDATE()
-    );
-    PRINT 'Table PLATEFORME_PARAMS créée';
-END
-GO
+SET NOCOUNT ON;
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
 
--- Table de configuration par groupe/dossier Sage (multi-société)
-IF NOT EXISTS (
-    SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'PLATEFORME_CONFIG_GROUPE'
-)
-BEGIN
-    CREATE TABLE dbo.PLATEFORME_CONFIG_GROUPE (
-        GROUPE_CODE  NVARCHAR(20)   NOT NULL,
-        CONFIG_KEY   NVARCHAR(100)  NOT NULL,
-        CONFIG_VALUE NVARCHAR(2000) NULL,
-        UPDATED_AT   DATETIME       NOT NULL DEFAULT GETDATE(),
-        PRIMARY KEY (GROUPE_CODE, CONFIG_KEY)
-    );
-    PRINT 'Table PLATEFORME_CONFIG_GROUPE créée';
-END
-GO
+-- =============================================================================
+-- TABLE : PLATEFORME_MAPPING_DEPENSES
+-- Classification BI des comptes généraux (PCG français).
+-- DROP + RECREATE via SQL dynamique : SQL Server valide les noms de colonnes
+-- de tout le batch à la compilation AVANT d'exécuter le DROP. La SQL dynamique
+-- est compilée à l'exécution (après le DROP), ce qui évite l'erreur de cache.
+-- =============================================================================
+IF OBJECT_ID('dbo.PLATEFORME_MAPPING_DEPENSES', 'U') IS NOT NULL
+    DROP TABLE dbo.PLATEFORME_MAPPING_DEPENSES;
 
--- Valeur initiale d'installation
-IF NOT EXISTS (SELECT 1 FROM PLATEFORME_PARAMS WHERE Param_Cle = 'INSTALL_DATE')
-    INSERT INTO PLATEFORME_PARAMS (Param_Cle, Param_Valeur)
-    VALUES ('INSTALL_DATE', CONVERT(NVARCHAR, GETDATE(), 126));
+EXEC sp_executesql N'
+CREATE TABLE dbo.PLATEFORME_MAPPING_DEPENSES (
+    id              INT IDENTITY(1,1) PRIMARY KEY,
+    compte_debut    NVARCHAR(13)  NOT NULL,
+    compte_fin      NVARCHAR(13)  NOT NULL,
+    type_classe     NVARCHAR(50)  NOT NULL,
+    categorie_bi    NVARCHAR(50)  NOT NULL,
+    sous_categorie  NVARCHAR(100) NULL,
+    kpi_tags        NVARCHAR(200) NULL
+);
+
+INSERT INTO dbo.PLATEFORME_MAPPING_DEPENSES
+    (compte_debut, compte_fin, type_classe, categorie_bi, sous_categorie, kpi_tags)
+VALUES
+-- CAPITAUX
+(''10'',''109999'',''CAPITAUX'',''CAPITAL'',                  ''Capital social'',                    ''equity,structure_financiere''),
+(''11'',''119999'',''CAPITAUX'',''RESERVES'',                 ''Reserves'',                          ''equity''),
+(''12'',''129999'',''CAPITAUX'',''RESULTAT'',                 ''Resultat exercice'',                 ''resultat''),
+(''13'',''139999'',''CAPITAUX'',''SUBVENTIONS_INVEST'',       ''Subventions investissement'',        ''financement''),
+(''14'',''149999'',''CAPITAUX'',''PROVISIONS_REGLEMENTEES'',  ''Provisions reglementees'',           ''provisions''),
+-- DETTES FINANCIERES
+(''16'',''169999'',''CAPITAUX'',''EMPRUNTS'',                 ''Emprunts et dettes financieres'',    ''endettement,tresorerie''),
+-- IMMOBILISATIONS
+(''20'',''209999'',''IMMOBILISATIONS'',''IMMOBILISATIONS_INCORP'',              ''Immobilisations incorporelles'',  ''investissement''),
+(''21'',''219999'',''IMMOBILISATIONS'',''IMMOBILISATIONS_CORP'',                ''Immobilisations corporelles'',    ''investissement''),
+(''22'',''229999'',''IMMOBILISATIONS'',''IMMOBILISATIONS_MISE_EN_CONCESSION'',  ''Immobilisations concession'',     ''investissement''),
+(''23'',''239999'',''IMMOBILISATIONS'',''IMMOBILISATIONS_EN_COURS'',            ''Immobilisations en cours'',       ''investissement''),
+(''27'',''279999'',''IMMOBILISATIONS'',''IMMOBILISATIONS_FINANCIERES'',         ''Immobilisations financieres'',    ''placement''),
+-- AMORTISSEMENTS
+(''28'',''289999'',''IMMOBILISATIONS'',''AMORTISSEMENTS'',       ''Amortissements immobilisations'',  ''amortissement,actifs''),
+(''29'',''299999'',''IMMOBILISATIONS'',''DEPRECIATIONS_IMMO'',   ''Depreciations immobilisations'',   ''provisions''),
+-- STOCKS
+(''31'',''319999'',''STOCKS'',''STOCK_MP'',              ''Stocks matieres premieres'',           ''stock''),
+(''32'',''329999'',''STOCKS'',''STOCK_AUTRES_APPRO'',    ''Stocks autres approvisionnements'',    ''stock''),
+(''33'',''339999'',''STOCKS'',''STOCK_ENCOURS'',         ''Stocks en cours production'',          ''production''),
+(''34'',''349999'',''STOCKS'',''STOCK_PRODUITS_INTER'',  ''Stocks produits intermediaires'',      ''production''),
+(''35'',''359999'',''STOCKS'',''STOCK_PRODUITS_FINIS'',  ''Stocks produits finis'',               ''stock''),
+(''37'',''379999'',''STOCKS'',''STOCK_MARCHANDISES'',    ''Stocks marchandises'',                 ''stock''),
+(''39'',''399999'',''STOCKS'',''DEPRECIATION_STOCK'',    ''Depreciation stocks'',                 ''provisions''),
+-- TIERS
+(''40'',''409999'',''COMPTES_TIERS'',''FOURNISSEURS'',            ''Dettes fournisseurs'',          ''dettes''),
+(''41'',''419999'',''COMPTES_TIERS'',''CLIENTS'',                 ''Creances clients'',             ''recouvrement,ca''),
+(''42'',''429999'',''COMPTES_TIERS'',''PERSONNEL'',               ''Dettes personnel'',             ''rh,paie''),
+(''43'',''439999'',''COMPTES_TIERS'',''ORGANISMES_SOCIAUX'',      ''Charges sociales'',             ''rh''),
+(''44'',''449999'',''COMPTES_TIERS'',''ETAT_IMPOTS'',             ''Etat et impots'',               ''fiscalite''),
+(''45'',''459999'',''COMPTES_TIERS'',''GROUPE_ASSOCIES'',         ''Groupe et associes'',           ''holding''),
+(''46'',''469999'',''COMPTES_TIERS'',''DEBITEURS_CREDITEURS'',    ''Debiteurs crediteurs divers'',  ''divers''),
+(''48'',''489999'',''COMPTES_TIERS'',''COMPTES_REGULARISATION'',  ''Comptes regularisation'',       ''comptabilite''),
+(''49'',''499999'',''COMPTES_TIERS'',''DEPRECIATION_TIERS'',      ''Depreciation comptes tiers'',   ''risque''),
+-- TRESORERIE
+(''50'',''509999'',''TRESORERIE'',''VALEURS_MOBILIERE'',  ''Valeurs mobilieres placement'',  ''placement''),
+(''51'',''519999'',''TRESORERIE'',''BANQUES'',            ''Banques'',                       ''tresorerie''),
+(''53'',''539999'',''TRESORERIE'',''CAISSE'',             ''Caisse'',                        ''tresorerie''),
+(''58'',''589999'',''TRESORERIE'',''VIREMENTS_INTERNES'', ''Virements internes'',            ''tresorerie''),
+-- CHARGES
+(''60'',''609999'',''CHARGES'',''ACHATS'',                   ''Achats marchandises et matieres'',   ''marge,stock''),
+(''61'',''619999'',''CHARGES'',''SERVICES_EXTERNES'',        ''Services exterieurs'',               ''charges''),
+(''62'',''629999'',''CHARGES'',''AUTRES_SERVICES_EXTERNES'', ''Autres services exterieurs'',        ''charges''),
+(''63'',''639999'',''CHARGES'',''IMPOTS_TAXES'',             ''Impots et taxes'',                   ''fiscalite''),
+(''64'',''649999'',''CHARGES'',''CHARGES_PERSONNEL'',        ''Charges personnel'',                 ''masse_salariale,rh''),
+(''65'',''659999'',''CHARGES'',''AUTRES_CHARGES'',           ''Autres charges gestion'',            ''charges''),
+(''66'',''669999'',''CHARGES'',''CHARGES_FINANCIERES'',      ''Charges financieres'',               ''finance,endettement''),
+(''67'',''679999'',''CHARGES'',''CHARGES_EXCEPTIONNELLES'',  ''Charges exceptionnelles'',           ''risque''),
+(''68'',''689999'',''CHARGES'',''DOTATIONS_AMORT'',          ''Dotations amortissements'',          ''investissement''),
+(''69'',''699999'',''CHARGES'',''IMPOT_BENEFICE'',           ''Impots sur benefices'',              ''fiscalite''),
+-- PRODUITS
+(''70'',''709999'',''PRODUITS'',''CHIFFRE_AFFAIRES'',      ''Ventes produits services'',                ''ca,revenus''),
+(''71'',''719999'',''PRODUITS'',''PRODUCTION_STOCKEE'',    ''Production stockee'',                      ''production''),
+(''72'',''729999'',''PRODUITS'',''PRODUCTION_IMMOBILISEE'',''Production immobilisee'',                  ''immobilisation''),
+(''74'',''749999'',''PRODUITS'',''SUBVENTIONS_EXPLOIT'',   ''Subventions exploitation'',                ''financement''),
+(''75'',''759999'',''PRODUITS'',''AUTRES_PRODUITS'',       ''Autres produits gestion'',                 ''revenus''),
+(''76'',''769999'',''PRODUITS'',''PRODUITS_FINANCIERS'',   ''Produits financiers'',                     ''placement''),
+(''77'',''779999'',''PRODUITS'',''PRODUITS_EXCEPTIONNELS'',''Produits exceptionnels'',                  ''risque''),
+(''78'',''789999'',''PRODUITS'',''REPRISES_PROVISIONS'',   ''Reprises amortissements provisions'',      ''provisions''),
+(''79'',''799999'',''PRODUITS'',''TRANSFERT_CHARGES'',     ''Transfert de charges'',                    ''comptabilite'');
+';
+PRINT '  OK PLATEFORME_MAPPING_DEPENSES';
 GO
 
 -- =============================================================================
 -- TABLE : calendrier
 -- Dimension temporelle utilisée par VW_GRAND_LIVRE_GENERAL et VW_FINANCE_GENERAL.
--- Peuplée de 2005-01-01 à 2040-12-31 (couvre l'historique Sage).
+-- 14 colonnes, période 2015-01-01 → 2035-12-31, annee_mois au format VARCHAR 'yyyy-MM'.
+-- DROP + RECREATE : table de données générées, recréation sans perte métier.
 -- =============================================================================
-IF NOT EXISTS (
-    SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'calendrier'
+IF OBJECT_ID('dbo.calendrier', 'U') IS NOT NULL
+    DROP TABLE dbo.calendrier;
+
+CREATE TABLE dbo.calendrier (
+    dt_jour              DATE         PRIMARY KEY,
+    annee                INT,
+    semestre             INT,
+    trimestre            INT,
+    mois                 INT,
+    libelle_mois         VARCHAR(20),
+    annee_mois           VARCHAR(7),
+    semaine              INT,
+    annee_semaine        VARCHAR(10),
+    libelle_semaine      VARCHAR(10),
+    jour_mois            INT,
+    jour_annee           INT,
+    jour_semaine         INT,
+    libelle_jour_semaine VARCHAR(20),
+    est_weekend          BIT
+);
+
+WITH dates AS (
+    SELECT CAST('20150101' AS DATE) AS d
+    UNION ALL
+    SELECT DATEADD(DAY, 1, d) FROM dates WHERE d < '20351231'
 )
-BEGIN
-    CREATE TABLE dbo.calendrier (
-        dt_jour              DATE        NOT NULL PRIMARY KEY,
-        annee                SMALLINT    NOT NULL,
-        semestre             TINYINT     NOT NULL,
-        trimestre            TINYINT     NOT NULL,
-        mois                 TINYINT     NOT NULL,
-        libelle_mois         NVARCHAR(20) NOT NULL,
-        annee_mois           INT         NOT NULL,
-        semaine              TINYINT     NOT NULL,
-        annee_semaine        INT         NOT NULL
-    );
-    PRINT 'Table calendrier créée';
-END
+INSERT INTO dbo.calendrier
+SELECT
+    d                                                           AS dt_jour,
+    YEAR(d)                                                     AS annee,
+    CASE WHEN MONTH(d) <= 6 THEN 1 ELSE 2 END                  AS semestre,
+    DATEPART(QUARTER, d)                                        AS trimestre,
+    MONTH(d)                                                    AS mois,
+    DATENAME(MONTH, d)                                          AS libelle_mois,
+    FORMAT(d, 'yyyy-MM')                                        AS annee_mois,
+    DATEPART(WEEK, d)                                           AS semaine,
+    CONCAT(YEAR(d), '-S', FORMAT(DATEPART(WEEK, d), '00'))     AS annee_semaine,
+    CONCAT('S', FORMAT(DATEPART(WEEK, d), '00'))               AS libelle_semaine,
+    DAY(d)                                                      AS jour_mois,
+    DATEPART(DAYOFYEAR, d)                                      AS jour_annee,
+    DATEPART(WEEKDAY, d)                                        AS jour_semaine,
+    DATENAME(WEEKDAY, d)                                        AS libelle_jour_semaine,
+    CASE WHEN DATEPART(WEEKDAY, d) IN (1, 7) THEN 1 ELSE 0 END AS est_weekend
+FROM dates
+OPTION (MAXRECURSION 0);
+
+PRINT '  OK calendrier (2015-2035)';
 GO
 
--- Peupler le calendrier si vide
-IF NOT EXISTS (SELECT 1 FROM dbo.calendrier WHERE dt_jour = '2005-01-01')
+-- =============================================================================
+-- TABLE : PLATEFORME_CONFIG_GROUPE
+-- Métadonnées par dossier Sage (multi-société).
+-- =============================================================================
+IF OBJECT_ID('dbo.PLATEFORME_CONFIG_GROUPE', 'U') IS NULL
 BEGIN
-    WITH dates AS (
-        SELECT CAST('2005-01-01' AS DATE) AS d
-        UNION ALL
-        SELECT DATEADD(DAY, 1, d) FROM dates WHERE d < '2040-12-31'
-    )
-    INSERT INTO dbo.calendrier
-        (dt_jour, annee, semestre, trimestre, mois, libelle_mois, annee_mois, semaine, annee_semaine)
-    SELECT
-        d,
-        YEAR(d),
-        CASE WHEN MONTH(d) <= 6 THEN 1 ELSE 2 END,
-        DATEPART(QUARTER, d),
-        MONTH(d),
-        DATENAME(MONTH, d),
-        YEAR(d) * 100 + MONTH(d),
-        DATEPART(WEEK, d),
-        YEAR(d) * 100 + DATEPART(WEEK, d)
-    FROM dates
-    OPTION (MAXRECURSION 15000);
-    PRINT 'Calendrier peuplé (2005-2040)';
+    CREATE TABLE dbo.PLATEFORME_CONFIG_GROUPE (
+        ID              INT IDENTITY(1,1) PRIMARY KEY,
+        Code_Entite     NVARCHAR(20)  NOT NULL,
+        Nom_Entite      NVARCHAR(100) NOT NULL,
+        SIREN           NVARCHAR(9)   NULL,
+        Devise_Base     NVARCHAR(3)   DEFAULT 'EUR',
+        Exercice_Debut  DATE          NULL,
+        Exercice_Fin    DATE          NULL,
+        Actif           BIT           DEFAULT 1,
+        Date_Creation   DATETIME      DEFAULT GETDATE(),
+        Token_Agent     NVARCHAR(200) NULL
+    );
+    PRINT '  OK PLATEFORME_CONFIG_GROUPE';
+END
+ELSE PRINT '  ~ PLATEFORME_CONFIG_GROUPE existe';
+GO
+
+-- =============================================================================
+-- TABLE : PLATEFORME_PARAMS
+-- Paramètres de l'agent — MERGE idempotent sur table existante,
+-- CREATE complet si absente.
+-- =============================================================================
+IF OBJECT_ID('dbo.PLATEFORME_PARAMS', 'U') IS NOT NULL
+BEGIN
+    -- Compatibilité ancienne structure : ajouter colonnes manquantes
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                   WHERE TABLE_NAME = 'PLATEFORME_PARAMS' AND COLUMN_NAME = 'Param_Type')
+        ALTER TABLE dbo.PLATEFORME_PARAMS ADD Param_Type NVARCHAR(50) NULL;
+
+    IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                   WHERE TABLE_NAME = 'PLATEFORME_PARAMS' AND COLUMN_NAME = 'Description')
+        ALTER TABLE dbo.PLATEFORME_PARAMS ADD Description NVARCHAR(200) NULL;
+
+    -- MERGE : INSERT uniquement si la clé n'existe pas encore
+    MERGE dbo.PLATEFORME_PARAMS AS tgt
+    USING (VALUES
+        ('AGENT_VERSION',     '5.3',                                'AGENT', 'Version script déploiement agent'),
+        ('PLATEFORME_URL',    '',                                   'AGENT', 'URL plateforme SaaS BI'),
+        ('TOKEN_API',         '',                                   'AGENT', 'Token API de liaison'),
+        ('EMAIL_LIAISON',     '',                                   'AGENT', 'Email de liaison'),
+        ('SYNC_INTERVAL_MIN', '15',                                 'AGENT', 'Intervalle sync en minutes'),
+        ('SYNC_MODE',         'INCREMENTAL',                        'AGENT', 'INCREMENTAL ou FULL'),
+        ('DATE_INSTALL',      CONVERT(VARCHAR, GETDATE(), 120),     'AGENT', 'Date installation agent'),
+        ('LAST_SYNC',         '',                                   'AGENT', 'Dernière sync réussie'),
+        ('PORT_AGENT',        '8443',                               'AGENT', 'Port HTTPS agent')
+    ) AS src (Param_Cle, Param_Valeur, Param_Type, Description)
+    ON tgt.Param_Cle = src.Param_Cle
+    WHEN NOT MATCHED THEN
+        INSERT (Param_Cle, Param_Valeur, Param_Type, Description)
+        VALUES (src.Param_Cle, src.Param_Valeur, src.Param_Type, src.Description);
+
+    PRINT '  OK PLATEFORME_PARAMS (MERGE sur table existante)';
+END
+ELSE
+BEGIN
+    CREATE TABLE dbo.PLATEFORME_PARAMS (
+        Param_Cle       NVARCHAR(100) PRIMARY KEY,
+        Param_Valeur    NVARCHAR(500) NOT NULL,
+        Param_Type      NVARCHAR(50)  NULL,
+        Description     NVARCHAR(200) NULL,
+        Date_Modif      DATETIME      DEFAULT GETDATE()
+    );
+    INSERT INTO dbo.PLATEFORME_PARAMS (Param_Cle, Param_Valeur, Param_Type, Description) VALUES
+    ('AGENT_VERSION',     '5.3',                                'AGENT', 'Version script déploiement agent'),
+    ('PLATEFORME_URL',    '',                                   'AGENT', 'URL plateforme SaaS BI'),
+    ('TOKEN_API',         '',                                   'AGENT', 'Token API de liaison'),
+    ('EMAIL_LIAISON',     '',                                   'AGENT', 'Email de liaison'),
+    ('SYNC_INTERVAL_MIN', '15',                                 'AGENT', 'Intervalle sync en minutes'),
+    ('SYNC_MODE',         'INCREMENTAL',                        'AGENT', 'INCREMENTAL ou FULL'),
+    ('DATE_INSTALL',      CONVERT(VARCHAR, GETDATE(), 120),     'AGENT', 'Date installation'),
+    ('LAST_SYNC',         '',                                   'AGENT', 'Dernière sync réussie'),
+    ('PORT_AGENT',        '8443',                               'AGENT', 'Port HTTPS agent');
+    PRINT '  OK PLATEFORME_PARAMS (créée)';
 END
 GO
 
 -- =============================================================================
--- TABLE : plateforme_mapping_depenses
--- Classification BI des comptes généraux (PCG français).
--- Utilisée par VW_GRAND_LIVRE_GENERAL, VW_FINANCE_GENERAL, VW_FOURNISSEURS.
+-- INDEX DE PERFORMANCE
+-- Sur F_ECRITUREC (grande table, très sollicitée par toutes les vues BI)
+-- et F_DOCENTETE. Création conditionnelle — idempotent.
 -- =============================================================================
-IF NOT EXISTS (
-    SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'plateforme_mapping_depenses'
-)
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_ECRITUREC_BI_DATE' AND object_id = OBJECT_ID('F_ECRITUREC'))
 BEGIN
-    CREATE TABLE dbo.plateforme_mapping_depenses (
-        compte_debut  INT           NOT NULL PRIMARY KEY,
-        type_classe   NVARCHAR(20)  NOT NULL,
-        categorie_bi  NVARCHAR(50)  NOT NULL,
-        sous_categorie NVARCHAR(100) NULL,
-        kpi_tags      NVARCHAR(200) NULL
-    );
-    PRINT 'Table plateforme_mapping_depenses créée';
-END
-GO
+    CREATE NONCLUSTERED INDEX IX_ECRITUREC_BI_DATE ON dbo.F_ECRITUREC (EC_Date, JO_Num, CG_Num)
+    INCLUDE (EC_No, EC_Piece, EC_Intitule, EC_Montant, EC_Sens, EC_Lettrage, CT_Num);
+    PRINT '  OK IX_ECRITUREC_BI_DATE';
+END ELSE PRINT '  ~ IX_ECRITUREC_BI_DATE existe';
 
--- Peupler le mapping si vide
-IF NOT EXISTS (SELECT 1 FROM dbo.plateforme_mapping_depenses)
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_ECRITUREC_BI_COMPTE' AND object_id = OBJECT_ID('F_ECRITUREC'))
 BEGIN
-    INSERT INTO dbo.plateforme_mapping_depenses VALUES
-    -- Charges (classe 6)
-    (60, 'CHARGES', 'ACHATS',              'Achats marchandises/matières',      'ACHATS,MARGE,BFR'),
-    (61, 'CHARGES', 'SERVICES_EXTERNES',   'Services extérieurs',               'CHARGES_OPEX'),
-    (62, 'CHARGES', 'AUTRES_SERVICES',     'Autres services extérieurs',        'CHARGES_OPEX'),
-    (63, 'CHARGES', 'IMPOTS_TAXES',        'Impôts et taxes',                   'CHARGES_FIXES'),
-    (64, 'CHARGES', 'CHARGES_PERSONNEL',   'Salaires et charges sociales',      'MASSE_SALARIALE,EBITDA'),
-    (65, 'CHARGES', 'AUTRES_CHARGES',      'Autres charges de gestion',         'CHARGES_OPEX'),
-    (66, 'CHARGES', 'CHARGES_FINANCIERES', 'Charges financières',               'CHARGES_FINANCIERES'),
-    (67, 'CHARGES', 'CHARGES_EXCEPTION',   'Charges exceptionnelles',           'CHARGES_EXCEPTION'),
-    (68, 'CHARGES', 'DOTATIONS_AMORT',     'Amortissements et provisions',      'AMORT,EBIT'),
-    (69, 'CHARGES', 'IMPOTS_BENEFICES',    'Impôts sur les bénéfices',          'IS'),
-    -- Produits (classe 7)
-    (70, 'PRODUITS', 'CHIFFRE_AFFAIRES',    'Ventes de produits et services',   'CA,EBITDA,RESULTAT'),
-    (71, 'PRODUITS', 'PROD_STOCKEE',        'Production stockée',               'PRODUCTION'),
-    (72, 'PRODUITS', 'PROD_IMMOBILISEE',    'Production immobilisée',           'PRODUCTION'),
-    (73, 'PRODUITS', 'PROD_VENDUE',         'Production vendue',                'CA'),
-    (74, 'PRODUITS', 'SUBVENTIONS',         'Subventions d''exploitation',      'SUBVENTIONS'),
-    (75, 'PRODUITS', 'AUTRES_PRODUITS',     'Autres produits de gestion',       'AUTRES_PRODUITS'),
-    (76, 'PRODUITS', 'PRODUITS_FINANCIERS', 'Produits financiers',              'PRODUITS_FINANCIERS'),
-    (77, 'PRODUITS', 'PRODUITS_EXCEPTION',  'Produits exceptionnels',           'PRODUITS_EXCEPTION'),
-    (78, 'PRODUITS', 'REPRISES_PROVISIONS', 'Reprises sur provisions',          'REPRISES'),
-    -- Tiers (classe 4)
-    (40, 'BILAN', 'DETTES_FOURNISSEURS',   'Fournisseurs et comptes rattachés', 'BFR,DPO'),
-    (41, 'BILAN', 'CREANCES_CLIENTS',      'Clients et comptes rattachés',      'BFR,DSO'),
-    (42, 'BILAN', 'PERSONNEL',             'Personnel et comptes rattachés',    'SOCIAL'),
-    (43, 'BILAN', 'ORGANISMES_SOCIAUX',    'Organismes sociaux',                'SOCIAL'),
-    (44, 'BILAN', 'ETAT_FISC',             'État et collectivités publiques',   'FISCAL'),
-    (45, 'BILAN', 'GROUPE_ASSOCIES',       'Groupe et associés',                'GROUPE'),
-    (46, 'BILAN', 'DEBITEURS_CREANCIERS',  'Débiteurs et créanciers divers',    'TIERS_DIVERS'),
-    (47, 'BILAN', 'COMPTES_TRANSITOIRES',  'Comptes transitoires',              'TRANSITOIRE'),
-    (48, 'BILAN', 'COMPTES_REGULARISATION','Comptes de régularisation',         'REGULARISATION'),
-    -- Trésorerie (classe 5)
-    (50, 'TRESORERIE', 'TRESORERIE', 'Valeurs mobilières de placement',  'TRESORERIE'),
-    (51, 'TRESORERIE', 'TRESORERIE', 'Banques et établissements financiers','TRESORERIE,BFR'),
-    (53, 'TRESORERIE', 'TRESORERIE', 'Caisse',                            'TRESORERIE'),
-    (58, 'TRESORERIE', 'TRESORERIE', 'Virements internes',                'TRESORERIE'),
-    -- Fonds propres (classe 1)
-    (10, 'BILAN', 'FONDS_PROPRES',     'Capital et primes',              'FONDS_PROPRES'),
-    (11, 'BILAN', 'FONDS_PROPRES',     'Réserves',                       'FONDS_PROPRES'),
-    (12, 'BILAN', 'RESULTAT',          'Résultat de l''exercice',        'RESULTAT'),
-    (13, 'BILAN', 'FONDS_PROPRES',     'Provisions réglementées',        'FONDS_PROPRES'),
-    (16, 'BILAN', 'DETTES_FINANCIERES','Emprunts et dettes assimilées',  'DETTES_LT'),
-    -- Immobilisations (classe 2)
-    (20, 'BILAN', 'IMMOBILISATIONS', 'Immobilisations incorporelles',   'ACTIF'),
-    (21, 'BILAN', 'IMMOBILISATIONS', 'Immobilisations corporelles',     'ACTIF'),
-    (22, 'BILAN', 'IMMOBILISATIONS', 'Immobilisations en cours',        'ACTIF'),
-    (28, 'BILAN', 'AMORTISSEMENTS',  'Amortissements des immobilisations','ACTIF'),
-    -- Stocks (classe 3)
-    (30, 'BILAN', 'STOCKS', 'Stocks de marchandises',    'STOCKS,BFR'),
-    (31, 'BILAN', 'STOCKS', 'Matières premières',        'STOCKS,BFR'),
-    (35, 'BILAN', 'STOCKS', 'Stocks de produits finis',  'STOCKS,BFR'),
-    (37, 'BILAN', 'STOCKS', 'Stocks de marchandises',    'STOCKS,BFR');
+    CREATE NONCLUSTERED INDEX IX_ECRITUREC_BI_COMPTE ON dbo.F_ECRITUREC (CG_Num, EC_Date)
+    INCLUDE (EC_Montant, EC_Sens, JO_Num);
+    PRINT '  OK IX_ECRITUREC_BI_COMPTE';
+END ELSE PRINT '  ~ IX_ECRITUREC_BI_COMPTE existe';
 
-    PRINT 'plateforme_mapping_depenses peuplée';
-END
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_ECRITUREC_BI_TIERS' AND object_id = OBJECT_ID('F_ECRITUREC'))
+BEGIN
+    CREATE NONCLUSTERED INDEX IX_ECRITUREC_BI_TIERS ON dbo.F_ECRITUREC (CT_Num, EC_Date)
+    INCLUDE (EC_Montant, EC_Sens, EC_Lettrage, CG_Num);
+    PRINT '  OK IX_ECRITUREC_BI_TIERS';
+END ELSE PRINT '  ~ IX_ECRITUREC_BI_TIERS existe';
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_DOCENTETE_BI_DATE' AND object_id = OBJECT_ID('F_DOCENTETE'))
+BEGIN
+    CREATE NONCLUSTERED INDEX IX_DOCENTETE_BI_DATE ON dbo.F_DOCENTETE (DO_Date, DO_Type, DO_Piece)
+    INCLUDE (DO_Tiers, DO_TotalHT, DO_TotalTTC, DO_Statut);
+    PRINT '  OK IX_DOCENTETE_BI_DATE';
+END ELSE PRINT '  ~ IX_DOCENTETE_BI_DATE existe';
 GO
