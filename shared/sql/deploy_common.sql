@@ -12,14 +12,12 @@ SET QUOTED_IDENTIFIER ON;
 -- =============================================================================
 -- TABLE : PLATEFORME_MAPPING_DEPENSES
 -- Classification BI des comptes généraux (PCG français).
--- DROP + RECREATE via SQL dynamique : SQL Server valide les noms de colonnes
--- de tout le batch à la compilation AVANT d'exécuter le DROP. La SQL dynamique
--- est compilée à l'exécution (après le DROP), ce qui évite l'erreur de cache.
+-- DROP dans un batch, CREATE dans le batch suivant (séparés par GO) :
+-- chaque batch est compilé indépendamment, pas de problème de cache de schéma.
 -- =============================================================================
 IF OBJECT_ID('dbo.PLATEFORME_MAPPING_DEPENSES', 'U') IS NOT NULL
     DROP TABLE dbo.PLATEFORME_MAPPING_DEPENSES;
-
-EXEC sp_executesql N'
+GO
 CREATE TABLE dbo.PLATEFORME_MAPPING_DEPENSES (
     id              INT IDENTITY(1,1) PRIMARY KEY,
     compte_debut    NVARCHAR(13)  NOT NULL,
@@ -34,67 +32,67 @@ INSERT INTO dbo.PLATEFORME_MAPPING_DEPENSES
     (compte_debut, compte_fin, type_classe, categorie_bi, sous_categorie, kpi_tags)
 VALUES
 -- CAPITAUX
-(''10'',''109999'',''CAPITAUX'',''CAPITAL'',                  ''Capital social'',                    ''equity,structure_financiere''),
-(''11'',''119999'',''CAPITAUX'',''RESERVES'',                 ''Reserves'',                          ''equity''),
-(''12'',''129999'',''CAPITAUX'',''RESULTAT'',                 ''Resultat exercice'',                 ''resultat''),
-(''13'',''139999'',''CAPITAUX'',''SUBVENTIONS_INVEST'',       ''Subventions investissement'',        ''financement''),
-(''14'',''149999'',''CAPITAUX'',''PROVISIONS_REGLEMENTEES'',  ''Provisions reglementees'',           ''provisions''),
+('10','109999','CAPITAUX','CAPITAL',                  'Capital social',                    'equity,structure_financiere'),
+('11','119999','CAPITAUX','RESERVES',                 'Reserves',                          'equity'),
+('12','129999','CAPITAUX','RESULTAT',                 'Resultat exercice',                 'resultat'),
+('13','139999','CAPITAUX','SUBVENTIONS_INVEST',       'Subventions investissement',        'financement'),
+('14','149999','CAPITAUX','PROVISIONS_REGLEMENTEES',  'Provisions reglementees',           'provisions'),
 -- DETTES FINANCIERES
-(''16'',''169999'',''CAPITAUX'',''EMPRUNTS'',                 ''Emprunts et dettes financieres'',    ''endettement,tresorerie''),
+('16','169999','CAPITAUX','EMPRUNTS',                 'Emprunts et dettes financieres',    'endettement,tresorerie'),
 -- IMMOBILISATIONS
-(''20'',''209999'',''IMMOBILISATIONS'',''IMMOBILISATIONS_INCORP'',              ''Immobilisations incorporelles'',  ''investissement''),
-(''21'',''219999'',''IMMOBILISATIONS'',''IMMOBILISATIONS_CORP'',                ''Immobilisations corporelles'',    ''investissement''),
-(''22'',''229999'',''IMMOBILISATIONS'',''IMMOBILISATIONS_MISE_EN_CONCESSION'',  ''Immobilisations concession'',     ''investissement''),
-(''23'',''239999'',''IMMOBILISATIONS'',''IMMOBILISATIONS_EN_COURS'',            ''Immobilisations en cours'',       ''investissement''),
-(''27'',''279999'',''IMMOBILISATIONS'',''IMMOBILISATIONS_FINANCIERES'',         ''Immobilisations financieres'',    ''placement''),
+('20','209999','IMMOBILISATIONS','IMMOBILISATIONS_INCORP',              'Immobilisations incorporelles',  'investissement'),
+('21','219999','IMMOBILISATIONS','IMMOBILISATIONS_CORP',                'Immobilisations corporelles',    'investissement'),
+('22','229999','IMMOBILISATIONS','IMMOBILISATIONS_MISE_EN_CONCESSION',  'Immobilisations concession',     'investissement'),
+('23','239999','IMMOBILISATIONS','IMMOBILISATIONS_EN_COURS',            'Immobilisations en cours',       'investissement'),
+('27','279999','IMMOBILISATIONS','IMMOBILISATIONS_FINANCIERES',         'Immobilisations financieres',    'placement'),
 -- AMORTISSEMENTS
-(''28'',''289999'',''IMMOBILISATIONS'',''AMORTISSEMENTS'',       ''Amortissements immobilisations'',  ''amortissement,actifs''),
-(''29'',''299999'',''IMMOBILISATIONS'',''DEPRECIATIONS_IMMO'',   ''Depreciations immobilisations'',   ''provisions''),
+('28','289999','IMMOBILISATIONS','AMORTISSEMENTS',       'Amortissements immobilisations',  'amortissement,actifs'),
+('29','299999','IMMOBILISATIONS','DEPRECIATIONS_IMMO',   'Depreciations immobilisations',   'provisions'),
 -- STOCKS
-(''31'',''319999'',''STOCKS'',''STOCK_MP'',              ''Stocks matieres premieres'',           ''stock''),
-(''32'',''329999'',''STOCKS'',''STOCK_AUTRES_APPRO'',    ''Stocks autres approvisionnements'',    ''stock''),
-(''33'',''339999'',''STOCKS'',''STOCK_ENCOURS'',         ''Stocks en cours production'',          ''production''),
-(''34'',''349999'',''STOCKS'',''STOCK_PRODUITS_INTER'',  ''Stocks produits intermediaires'',      ''production''),
-(''35'',''359999'',''STOCKS'',''STOCK_PRODUITS_FINIS'',  ''Stocks produits finis'',               ''stock''),
-(''37'',''379999'',''STOCKS'',''STOCK_MARCHANDISES'',    ''Stocks marchandises'',                 ''stock''),
-(''39'',''399999'',''STOCKS'',''DEPRECIATION_STOCK'',    ''Depreciation stocks'',                 ''provisions''),
+('31','319999','STOCKS','STOCK_MP',              'Stocks matieres premieres',           'stock'),
+('32','329999','STOCKS','STOCK_AUTRES_APPRO',    'Stocks autres approvisionnements',    'stock'),
+('33','339999','STOCKS','STOCK_ENCOURS',         'Stocks en cours production',          'production'),
+('34','349999','STOCKS','STOCK_PRODUITS_INTER',  'Stocks produits intermediaires',      'production'),
+('35','359999','STOCKS','STOCK_PRODUITS_FINIS',  'Stocks produits finis',               'stock'),
+('37','379999','STOCKS','STOCK_MARCHANDISES',    'Stocks marchandises',                 'stock'),
+('39','399999','STOCKS','DEPRECIATION_STOCK',    'Depreciation stocks',                 'provisions'),
 -- TIERS
-(''40'',''409999'',''COMPTES_TIERS'',''FOURNISSEURS'',            ''Dettes fournisseurs'',          ''dettes''),
-(''41'',''419999'',''COMPTES_TIERS'',''CLIENTS'',                 ''Creances clients'',             ''recouvrement,ca''),
-(''42'',''429999'',''COMPTES_TIERS'',''PERSONNEL'',               ''Dettes personnel'',             ''rh,paie''),
-(''43'',''439999'',''COMPTES_TIERS'',''ORGANISMES_SOCIAUX'',      ''Charges sociales'',             ''rh''),
-(''44'',''449999'',''COMPTES_TIERS'',''ETAT_IMPOTS'',             ''Etat et impots'',               ''fiscalite''),
-(''45'',''459999'',''COMPTES_TIERS'',''GROUPE_ASSOCIES'',         ''Groupe et associes'',           ''holding''),
-(''46'',''469999'',''COMPTES_TIERS'',''DEBITEURS_CREDITEURS'',    ''Debiteurs crediteurs divers'',  ''divers''),
-(''48'',''489999'',''COMPTES_TIERS'',''COMPTES_REGULARISATION'',  ''Comptes regularisation'',       ''comptabilite''),
-(''49'',''499999'',''COMPTES_TIERS'',''DEPRECIATION_TIERS'',      ''Depreciation comptes tiers'',   ''risque''),
+('40','409999','COMPTES_TIERS','FOURNISSEURS',            'Dettes fournisseurs',          'dettes'),
+('41','419999','COMPTES_TIERS','CLIENTS',                 'Creances clients',             'recouvrement,ca'),
+('42','429999','COMPTES_TIERS','PERSONNEL',               'Dettes personnel',             'rh,paie'),
+('43','439999','COMPTES_TIERS','ORGANISMES_SOCIAUX',      'Charges sociales',             'rh'),
+('44','449999','COMPTES_TIERS','ETAT_IMPOTS',             'Etat et impots',               'fiscalite'),
+('45','459999','COMPTES_TIERS','GROUPE_ASSOCIES',         'Groupe et associes',           'holding'),
+('46','469999','COMPTES_TIERS','DEBITEURS_CREDITEURS',    'Debiteurs crediteurs divers',  'divers'),
+('48','489999','COMPTES_TIERS','COMPTES_REGULARISATION',  'Comptes regularisation',       'comptabilite'),
+('49','499999','COMPTES_TIERS','DEPRECIATION_TIERS',      'Depreciation comptes tiers',   'risque'),
 -- TRESORERIE
-(''50'',''509999'',''TRESORERIE'',''VALEURS_MOBILIERE'',  ''Valeurs mobilieres placement'',  ''placement''),
-(''51'',''519999'',''TRESORERIE'',''BANQUES'',            ''Banques'',                       ''tresorerie''),
-(''53'',''539999'',''TRESORERIE'',''CAISSE'',             ''Caisse'',                        ''tresorerie''),
-(''58'',''589999'',''TRESORERIE'',''VIREMENTS_INTERNES'', ''Virements internes'',            ''tresorerie''),
+('50','509999','TRESORERIE','VALEURS_MOBILIERE',  'Valeurs mobilieres placement',  'placement'),
+('51','519999','TRESORERIE','BANQUES',            'Banques',                       'tresorerie'),
+('53','539999','TRESORERIE','CAISSE',             'Caisse',                        'tresorerie'),
+('58','589999','TRESORERIE','VIREMENTS_INTERNES', 'Virements internes',            'tresorerie'),
 -- CHARGES
-(''60'',''609999'',''CHARGES'',''ACHATS'',                   ''Achats marchandises et matieres'',   ''marge,stock''),
-(''61'',''619999'',''CHARGES'',''SERVICES_EXTERNES'',        ''Services exterieurs'',               ''charges''),
-(''62'',''629999'',''CHARGES'',''AUTRES_SERVICES_EXTERNES'', ''Autres services exterieurs'',        ''charges''),
-(''63'',''639999'',''CHARGES'',''IMPOTS_TAXES'',             ''Impots et taxes'',                   ''fiscalite''),
-(''64'',''649999'',''CHARGES'',''CHARGES_PERSONNEL'',        ''Charges personnel'',                 ''masse_salariale,rh''),
-(''65'',''659999'',''CHARGES'',''AUTRES_CHARGES'',           ''Autres charges gestion'',            ''charges''),
-(''66'',''669999'',''CHARGES'',''CHARGES_FINANCIERES'',      ''Charges financieres'',               ''finance,endettement''),
-(''67'',''679999'',''CHARGES'',''CHARGES_EXCEPTIONNELLES'',  ''Charges exceptionnelles'',           ''risque''),
-(''68'',''689999'',''CHARGES'',''DOTATIONS_AMORT'',          ''Dotations amortissements'',          ''investissement''),
-(''69'',''699999'',''CHARGES'',''IMPOT_BENEFICE'',           ''Impots sur benefices'',              ''fiscalite''),
+('60','609999','CHARGES','ACHATS',                   'Achats marchandises et matieres',   'marge,stock'),
+('61','619999','CHARGES','SERVICES_EXTERNES',        'Services exterieurs',               'charges'),
+('62','629999','CHARGES','AUTRES_SERVICES_EXTERNES', 'Autres services exterieurs',        'charges'),
+('63','639999','CHARGES','IMPOTS_TAXES',             'Impots et taxes',                   'fiscalite'),
+('64','649999','CHARGES','CHARGES_PERSONNEL',        'Charges personnel',                 'masse_salariale,rh'),
+('65','659999','CHARGES','AUTRES_CHARGES',           'Autres charges gestion',            'charges'),
+('66','669999','CHARGES','CHARGES_FINANCIERES',      'Charges financieres',               'finance,endettement'),
+('67','679999','CHARGES','CHARGES_EXCEPTIONNELLES',  'Charges exceptionnelles',           'risque'),
+('68','689999','CHARGES','DOTATIONS_AMORT',          'Dotations amortissements',          'investissement'),
+('69','699999','CHARGES','IMPOT_BENEFICE',           'Impots sur benefices',              'fiscalite'),
 -- PRODUITS
-(''70'',''709999'',''PRODUITS'',''CHIFFRE_AFFAIRES'',      ''Ventes produits services'',                ''ca,revenus''),
-(''71'',''719999'',''PRODUITS'',''PRODUCTION_STOCKEE'',    ''Production stockee'',                      ''production''),
-(''72'',''729999'',''PRODUITS'',''PRODUCTION_IMMOBILISEE'',''Production immobilisee'',                  ''immobilisation''),
-(''74'',''749999'',''PRODUITS'',''SUBVENTIONS_EXPLOIT'',   ''Subventions exploitation'',                ''financement''),
-(''75'',''759999'',''PRODUITS'',''AUTRES_PRODUITS'',       ''Autres produits gestion'',                 ''revenus''),
-(''76'',''769999'',''PRODUITS'',''PRODUITS_FINANCIERS'',   ''Produits financiers'',                     ''placement''),
-(''77'',''779999'',''PRODUITS'',''PRODUITS_EXCEPTIONNELS'',''Produits exceptionnels'',                  ''risque''),
-(''78'',''789999'',''PRODUITS'',''REPRISES_PROVISIONS'',   ''Reprises amortissements provisions'',      ''provisions''),
-(''79'',''799999'',''PRODUITS'',''TRANSFERT_CHARGES'',     ''Transfert de charges'',                    ''comptabilite'');
-';
+('70','709999','PRODUITS','CHIFFRE_AFFAIRES',      'Ventes produits services',                'ca,revenus'),
+('71','719999','PRODUITS','PRODUCTION_STOCKEE',    'Production stockee',                      'production'),
+('72','729999','PRODUITS','PRODUCTION_IMMOBILISEE','Production immobilisee',                  'immobilisation'),
+('74','749999','PRODUITS','SUBVENTIONS_EXPLOIT',   'Subventions exploitation',                'financement'),
+('75','759999','PRODUITS','AUTRES_PRODUITS',       'Autres produits gestion',                 'revenus'),
+('76','769999','PRODUITS','PRODUITS_FINANCIERS',   'Produits financiers',                     'placement'),
+('77','779999','PRODUITS','PRODUITS_EXCEPTIONNELS','Produits exceptionnels',                  'risque'),
+('78','789999','PRODUITS','REPRISES_PROVISIONS',   'Reprises amortissements provisions',      'provisions'),
+('79','799999','PRODUITS','TRANSFERT_CHARGES',     'Transfert de charges',                    'comptabilite');
+
 PRINT '  OK PLATEFORME_MAPPING_DEPENSES';
 GO
 

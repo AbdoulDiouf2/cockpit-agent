@@ -927,10 +927,7 @@ SELECT 'F_DOCENTETE', COUNT(*), MIN(DO_Date), MAX(DO_Date), MAX(cbMarq), MAX(cbM
 FROM dbo.F_DOCENTETE
 UNION ALL
 SELECT 'F_ARTICLE', COUNT(*), NULL, NULL, MAX(cbMarq), MAX(cbModification)
-FROM dbo.F_ARTICLE
-UNION ALL
-SELECT 'F_IMMOBILISATION', COUNT(*), MIN(IM_DateAcq), MAX(IM_DateAcq), MAX(cbMarq), MAX(cbModification)
-FROM dbo.F_IMMOBILISATION;
+FROM dbo.F_ARTICLE;
 GO
 
 -- ---------------------------------------------------------------------------

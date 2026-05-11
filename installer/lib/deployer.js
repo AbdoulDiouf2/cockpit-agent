@@ -37,6 +37,23 @@ async function deployViews(pool, onProgress) {
 
     if (onProgress) onProgress(i + 1, files.length, file, 'done');
     logger.info(`[deployer] OK : ${file}`);
+
+    // After deploy_common.sql, verify the mapping table was created correctly.
+    // If not, fail early with a clear message rather than a cryptic column error.
+    if (file === 'deploy_common.sql') {
+      const check = await pool.request().query(`
+        SELECT COUNT(*) AS cnt
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'PLATEFORME_MAPPING_DEPENSES'
+          AND COLUMN_NAME = 'type_classe'
+      `);
+      if (check.recordset[0].cnt === 0) {
+        throw new Error(
+          "La table PLATEFORME_MAPPING_DEPENSES n'a pas été créée correctement (colonne 'type_classe' manquante). " +
+          "Vérifiez que le compte SQL dispose des droits CREATE TABLE sur cette base."
+        );
+      }
+    }
   }
 
   // Sauvegarder les capacités détectées dans PLATEFORME_PARAMS
