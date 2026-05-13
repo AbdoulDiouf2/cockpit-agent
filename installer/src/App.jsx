@@ -44,7 +44,7 @@ export default function App() {
       case 4: return <Step4_Views onNext={next} onBack={prev} />;
       case 5: return <Step5_Token sqlConfig={sqlConfig} agentId={agentId} setAgentId={setAgentId}
                        onNext={(r) => { setInstallResult(r); next(); }} onBack={prev} />;
-      case 6: return <Step6_Done result={installResult} caps={caps} />;
+      case 6: return <Step6_Done result={installResult} caps={caps} onOpenDashboard={() => setInstalledConfig(sqlConfig)} />;
       default: return null;
     }
   }

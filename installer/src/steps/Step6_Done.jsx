@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function Step6_Done({ result, caps }) {
+export default function Step6_Done({ result, caps, onOpenDashboard }) {
   const healthy = result?.healthy;
 
   const immoLabel = {
@@ -62,9 +62,9 @@ export default function Step6_Done({ result, caps }) {
       <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', marginTop: '32px' }}>
         <button
           className="btn btn--primary"
-          onClick={() => window.cockpit.openDashboard()}
+          onClick={onOpenDashboard}
         >
-          🚀 Ouvrir le tableau de bord Cockpit
+          🚀 Ouvrir le tableau de bord Agent
         </button>
       </div>
 
