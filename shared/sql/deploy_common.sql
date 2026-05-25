@@ -104,6 +104,7 @@ GO
 -- =============================================================================
 IF OBJECT_ID('dbo.calendrier', 'U') IS NOT NULL
     DROP TABLE dbo.calendrier;
+GO
 
 CREATE TABLE dbo.calendrier (
     dt_jour              DATE         PRIMARY KEY,
@@ -129,6 +130,9 @@ WITH dates AS (
     SELECT DATEADD(DAY, 1, d) FROM dates WHERE d < '20351231'
 )
 INSERT INTO dbo.calendrier
+    (dt_jour, annee, semestre, trimestre, mois, libelle_mois, annee_mois,
+     semaine, annee_semaine, libelle_semaine, jour_mois, jour_annee,
+     jour_semaine, libelle_jour_semaine, est_weekend)
 SELECT
     d                                                           AS dt_jour,
     YEAR(d)                                                     AS annee,
