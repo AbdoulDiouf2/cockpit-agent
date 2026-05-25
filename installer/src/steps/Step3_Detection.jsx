@@ -1,5 +1,14 @@
 import React, { useState, useEffect } from 'react';
 
+const MODULE_LABELS = {
+  CIAL: 'Gestion Commerciale',
+  CPTA: 'Comptabilité',
+  IMMO: 'Immobilisations',
+  TRES: 'Trésorerie',
+  PAYE: 'Paie',
+  PROD: 'Production',
+};
+
 export default function Step3_Detection({ caps, setCaps, onNext, onBack }) {
   const [detecting, setDetecting] = useState(false);
   const [error, setError]         = useState(null);
@@ -51,11 +60,11 @@ export default function Step3_Detection({ caps, setCaps, onNext, onBack }) {
 
   if (!caps) return null;
 
-  const immoLabel = {
-    v21plus: 'Sage 100 v21+',
-    v15v17:  'Sage 100 v15–v17',
+  const sageLabel = {
+    v21plus:  caps.versionMajeure ? `Sage 100 v${caps.versionMajeure}+` : 'Sage 100 v21+',
+    v15v17:   caps.versionMajeure ? `Sage 100 v${caps.versionMajeure}`  : 'Sage 100 v15–v17',
     fallback: 'Version ancienne / atypique',
-  }[caps.immoSchema] || caps.immoSchema;
+  }[caps.sageVersion] || caps.sageVersion;
 
   return (
     <div className="step">
@@ -65,7 +74,7 @@ export default function Step3_Detection({ caps, setCaps, onNext, onBack }) {
         Vérifiez qu'elles correspondent à votre installation Sage.
       </p>
 
-      {caps.immoSchema === 'fallback' && (
+      {caps.sageVersion === 'fallback' && (
         <div className="alert alert--warning">
           <span>⚠️</span>
           <div>
@@ -81,8 +90,8 @@ export default function Step3_Detection({ caps, setCaps, onNext, onBack }) {
         </div>
         <div className="caps-card">
           <div className="caps-card__label">Version Sage détectée</div>
-          <div className={`caps-card__value caps-card__value--${caps.immoSchema === 'fallback' ? 'warn' : 'ok'}`}>
-            {immoLabel}
+          <div className={`caps-card__value caps-card__value--${caps.sageVersion === 'fallback' ? 'warn' : 'ok'}`}>
+            {sageLabel}
           </div>
         </div>
         <div className="caps-card">
@@ -106,10 +115,28 @@ export default function Step3_Detection({ caps, setCaps, onNext, onBack }) {
             {caps.hasDateLivr ? 'Disponible' : 'Non disponible'}
           </div>
         </div>
-        <div className="caps-card">
-          <div className="caps-card__label">Schéma Stocks</div>
-          <div className="caps-card__value caps-card__value--ok">{caps.stockSchema || '—'}</div>
-        </div>
+
+        {caps.sageModules?.length > 0 ? (
+          <div className="caps-card" style={{ gridColumn: '1 / -1' }}>
+            <div className="caps-card__label">MODULES SAGE DÉTECTÉS</div>
+            <div className="modules-grid">
+              {caps.sageModules.map(mod => (
+                <div key={mod.type} className="module-badge">
+                  <span className="module-type">{mod.type}</span>
+                  <span className="module-name">{MODULE_LABELS[mod.type] ?? mod.type}</span>
+                  <span className="module-version">v{mod.version}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="caps-card" style={{ gridColumn: '1 / -1' }}>
+            <div className="caps-card__label">MODULES SAGE DÉTECTÉS</div>
+            <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>
+              Non disponible — détection par structure de colonnes ({caps.sageSource})
+            </span>
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '32px' }}>

@@ -11,22 +11,122 @@ const logger  = require('../utils/logger');
  * @returns {Promise<SageCapabilities>}
  *
  * @typedef {Object} SageCapabilities
- * @property {number}  sqlServerVersion  - Version majeure SQL Server (ex: 16)
- * @property {string}  sageVersion       - "v21plus" | "v15v17" | "fallback"
- * @property {string}  stockSchema       - "v21plus" | "v15v17" | "fallback"
- * @property {string}  immoSchema        - "v21plus" | "v15v17" | "fallback"
- * @property {boolean} hasDateLivr       - F_DOCENTETE.DO_DateLivr présent
- * @property {boolean} hasFormatFunction - FORMAT() disponible (SQL >= 2012)
- * @property {string[]} tablesFound      - Tables Sage détectées
- * @property {number}  nbEcritures       - Nombre d'écritures comptables
- * @property {string}  detectedAt
+ * @property {number}   sqlServerVersion  - Version majeure SQL Server (ex: 16)
+ * @property {string}   sageVersion       - "v21plus" | "v15v17" | "fallback"
+ * @property {number|null} versionMajeure - Version majeure Sage (ex: 26, 19, 15)
+ * @property {Array}    sageModules       - [{creator, type, version}] depuis cbSysTable
+ * @property {string}   sageSource        - 'cbSysTable' | 'F_DOCENTETE columns' | 'F_COMPTET columns' | 'fallback'
+ * @property {boolean}  hasDateLivr       - F_DOCENTETE.DO_DateLivr présent
+ * @property {boolean}  hasFormatFunction - FORMAT() disponible (SQL >= 2012)
+ * @property {string[]} tablesFound       - Tables Sage détectées
+ * @property {number}   nbEcritures       - Nombre d'écritures comptables
+ * @property {string}   detectedAt
  */
+
+/**
+ * Détection version Sage en cascade (3 niveaux).
+ * Niveau 1 : cbSysTable (version exacte par module)
+ * Niveau 2 : colonnes discriminantes F_DOCENTETE
+ * Niveau 3 : colonnes discriminantes F_COMPTET
+ */
+async function detectSageVersion(pool) {
+  const query = async (sqlText) => (await pool.request().query(sqlText)).recordset;
+
+  const result = { version: 'fallback', versionMajeure: null, modules: [], source: 'fallback' };
+
+  // Niveau 1 : cbSysTable
+  try {
+    const cbSys = await query(`
+      IF OBJECT_ID('dbo.cbSysTable') IS NOT NULL
+        SELECT CB_Creator, CB_Type, CB_CBaseVersion, CB_DescVersion
+        FROM dbo.cbSysTable
+    `);
+    if (cbSys && cbSys.length > 0) {
+      result.source  = 'cbSysTable';
+      result.modules = cbSys.map(r => ({
+        creator: r.CB_Creator,
+        type:    r.CB_Type,
+        version: Math.round(r.CB_DescVersion / 65536),
+      }));
+      const maxVersion      = Math.max(...result.modules.map(m => m.version));
+      result.versionMajeure = maxVersion;
+      result.version        = maxVersion >= 21 ? 'v21plus' : 'v15v17';
+      return result;
+    }
+  } catch (_) {}
+
+  // Niveau 2 : colonnes F_DOCENTETE
+  try {
+    const cols = await query(`
+      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = 'F_DOCENTETE'
+        AND COLUMN_NAME IN ('DO_NombreUM','DO_DateLivr','DO_TypeFrais','DO_DateDepart')
+    `);
+    if (cols && cols.length > 0) {
+      result.source = 'F_DOCENTETE columns';
+      const names = cols.map(r => r.COLUMN_NAME);
+      if (names.includes('DO_NombreUM'))   { result.version = 'v21plus'; result.versionMajeure = 21; return result; }
+      if (names.includes('DO_DateLivr'))   { result.version = 'v21plus'; result.versionMajeure = 19; return result; }
+      if (names.includes('DO_TypeFrais'))  { result.version = 'v15v17';  result.versionMajeure = 17; return result; }
+      if (names.includes('DO_DateDepart')) { result.version = 'v15v17';  result.versionMajeure = 15; return result; }
+    }
+  } catch (_) {}
+
+  // Niveau 3 : colonnes F_COMPTET
+  try {
+    const cols2 = await query(`
+      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = 'F_COMPTET'
+        AND COLUMN_NAME IN ('CT_NomPayeur','CT_SEPA','CT_IBAN')
+    `);
+    if (cols2 && cols2.length > 0) {
+      result.source = 'F_COMPTET columns';
+      const names2 = cols2.map(r => r.COLUMN_NAME);
+      if (names2.includes('CT_NomPayeur')) { result.version = 'v21plus'; result.versionMajeure = 21; return result; }
+      if (names2.includes('CT_SEPA'))      { result.version = 'v21plus'; result.versionMajeure = 19; return result; }
+      if (names2.includes('CT_IBAN'))      { result.version = 'v15v17';  result.versionMajeure = 17; return result; }
+    }
+  } catch (_) {}
+
+  // Niveau 4 : F_IMMOBILISATION + F_ARTSTOCK (logique historique)
+  try {
+    const immo = await query(`
+      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = 'F_IMMOBILISATION'
+        AND COLUMN_NAME IN ('IM_ValAcq','IM_ValOrigine')
+    `);
+    if (immo && immo.length > 0) {
+      result.source = 'F_IMMOBILISATION columns';
+      const names3 = immo.map(r => r.COLUMN_NAME);
+      if (names3.includes('IM_ValAcq'))     { result.version = 'v21plus'; return result; }
+      if (names3.includes('IM_ValOrigine')) { result.version = 'v15v17';  return result; }
+    }
+  } catch (_) {}
+
+  try {
+    const artstock = await query(`
+      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = 'F_ARTSTOCK'
+        AND COLUMN_NAME IN ('AS_MontSto','AS_PrixAch')
+    `);
+    if (artstock && artstock.length > 0) {
+      result.source = 'F_ARTSTOCK columns';
+      const names4 = artstock.map(r => r.COLUMN_NAME);
+      if (names4.includes('AS_MontSto')) { result.version = 'v21plus'; return result; }
+      if (names4.includes('AS_PrixAch')) { result.version = 'v15v17';  return result; }
+    }
+  } catch (_) {}
+
+  return result;
+}
+
 async function detectSageCapabilities(pool) {
   const result = {
     sqlServerVersion:  null,
     sageVersion:       null,
-    stockSchema:       null,
-    immoSchema:        null,
+    versionMajeure:    null,
+    sageModules:       [],
+    sageSource:        null,
     hasDateLivr:       false,
     hasFormatFunction: false,
     tablesFound:       [],
@@ -34,7 +134,6 @@ async function detectSageCapabilities(pool) {
     detectedAt:        new Date().toISOString(),
   };
 
-  // Helper : teste l'existence d'une colonne dans INFORMATION_SCHEMA
   const hasColumn = async (table, column) => {
     const r = await pool.request()
       .input('t', sql.NVarChar, table)
@@ -49,7 +148,7 @@ async function detectSageCapabilities(pool) {
   const verRes = await pool.request()
     .query("SELECT CAST(SERVERPROPERTY('ProductMajorVersion') AS INT) AS v");
   result.sqlServerVersion  = verRes.recordset[0].v;
-  result.hasFormatFunction = result.sqlServerVersion >= 11; // SQL Server 2012+
+  result.hasFormatFunction = result.sqlServerVersion >= 11;
 
   // 2. Tables core Sage 100
   const coreRes = await pool.request().query(`
@@ -64,40 +163,29 @@ async function detectSageCapabilities(pool) {
   `);
   result.tablesFound = coreRes.recordset.map(r => r.TABLE_NAME);
 
-  // 3. Schéma F_IMMOBILISATION (détermine la version Sage globale)
-  if (await hasColumn('F_IMMOBILISATION', 'IM_ValAcq')) {
-    result.immoSchema  = 'v21plus';
-    result.sageVersion = 'v21plus';
-  } else if (await hasColumn('F_IMMOBILISATION', 'IM_ValOrigine')) {
-    result.immoSchema  = 'v15v17';
-    result.sageVersion = 'v15v17';
-  } else {
-    result.immoSchema  = 'fallback';
-    result.sageVersion = 'fallback';
-  }
+  // 3. Détection version Sage (cascade 3 niveaux)
+  const vd = await detectSageVersion(pool);
+  result.sageVersion    = vd.version;
+  result.versionMajeure = vd.versionMajeure;
+  result.sageModules    = vd.modules;
+  result.sageSource     = vd.source;
 
-  // 4. Schéma F_ARTSTOCK
-  if (await hasColumn('F_ARTSTOCK', 'AS_MontSto')) {
-    result.stockSchema = 'v21plus';
-  } else if (await hasColumn('F_ARTSTOCK', 'AS_PrixAch')) {
-    result.stockSchema = 'v15v17';
-  } else {
-    result.stockSchema = 'fallback';
-  }
-
-  // 5. Champ optionnel DO_DateLivr (Sage 100 v19+)
+  // 4. Champ optionnel DO_DateLivr (Sage 100 v19+)
   result.hasDateLivr = await hasColumn('F_DOCENTETE', 'DO_DateLivr');
 
-  // 6. Nombre d'écritures (estimation volumétrie)
+  // 5. Nombre d'écritures (estimation volumétrie)
   try {
     const nbRes = await pool.request()
       .query('SELECT COUNT(*) AS NB FROM F_ECRITUREC');
     result.nbEcritures = nbRes.recordset[0].NB;
-  } catch (_) {
-    // Table peut ne pas exister encore
-  }
+  } catch (_) {}
 
-  logger.info(`[detector] Sage détecté : ${result.sageVersion} | SQL Server ${result.sqlServerVersion} | ${result.nbEcritures} écritures`);
+  logger.info(
+    `[detector] Sage ${result.sageVersion} (v${result.versionMajeure ?? '?'}) ` +
+    `via ${result.sageSource} | ` +
+    `Modules: ${result.sageModules.map(m => m.type).join(', ') || 'N/A'} | ` +
+    `SQL Server ${result.sqlServerVersion} | ${result.nbEcritures} écritures`
+  );
   return result;
 }
 
