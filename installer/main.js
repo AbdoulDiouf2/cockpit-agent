@@ -47,6 +47,7 @@ const { deployViews }       = require('./lib/deployer');
 const { detectSageCapabilities } = require('./lib/detector');
 const { saveCredential }    = require('./lib/credential-store');
 const { saveToken }         = require('./lib/token');
+const { formatServiceInstallFailure, escapeXmlText } = require('./lib/service-install-diagnostics');
 const { SERVICE_NAME, SERVICE_DESCRIPTION, HEALTH_PORT } = require('../shared/constants');
 
 const IS_DEV = IS_DEV_EARLY;
@@ -300,17 +301,17 @@ ipcMain.handle('service:install', async (event, { sqlConfig, agentId }) => {
         '<service>',
         `  <id>${SERVICE_NAME}</id>`,
         `  <name>${SERVICE_NAME}</name>`,
-        `  <description>${SERVICE_DESCRIPTION}</description>`,
-        `  <executable>${servicePath}</executable>`,
+        `  <description>${escapeXmlText(SERVICE_DESCRIPTION)}</description>`,
+        `  <executable>${escapeXmlText(servicePath)}</executable>`,
       ];
       if (sqlConfig.useWindowsAuth && sqlConfig.windowsPassword) {
         const saDomain = process.env.USERDOMAIN || '.';
         const saUser   = process.env.USERNAME   || '';
         xmlLines.push(
           '  <serviceaccount>',
-          `    <domain>${saDomain}</domain>`,
-          `    <user>${saUser}</user>`,
-          `    <password>${sqlConfig.windowsPassword}</password>`,
+          `    <domain>${escapeXmlText(saDomain)}</domain>`,
+          `    <user>${escapeXmlText(saUser)}</user>`,
+          `    <password>${escapeXmlText(sqlConfig.windowsPassword)}</password>`,
           '    <allowservicelogon>true</allowservicelogon>',
           '  </serviceaccount>',
         );
@@ -327,8 +328,21 @@ ipcMain.handle('service:install', async (event, { sqlConfig, agentId }) => {
       const winswCfgSrc = path.join(process.resourcesPath, 'winsw.exe.config');
       const winswCfgExe = path.join(daemonDir, `${SERVICE_NAME}.exe.config`);
       const psScript = path.join(daemonDir, 'install-service.ps1');
+      const diagnosticPath = path.join(daemonDir, 'install-service-diagnostic.json');
+      try { fs.rmSync(diagnosticPath, { force: true }); } catch (_) {}
       fs.writeFileSync(psScript, [
         `$ErrorActionPreference = 'Stop'`,
+        `$diagnostic = '${q(diagnosticPath)}'`,
+        `$startedAt = Get-Date`,
+        `function Fail-WinSW($phase, $code) {`,
+        `  $eventId = $null`,
+        `  try {`,
+        `    $events = @(Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName='Service Control Manager'; Id=7038; StartTime=$startedAt} -ErrorAction Stop | Where-Object { $_.Message -match 'CockpitAgent' })`,
+        `    if ($events.Count -gt 0) { $eventId = 7038 }`,
+        `  } catch {}`,
+        `  @{phase=$phase; code=[int]$code; eventId=$eventId} | ConvertTo-Json -Compress | Set-Content -LiteralPath $diagnostic -Encoding UTF8`,
+        `  exit $code`,
+        `}`,
         `$winsw    = '${q(winswExe)}'`,
         `$winswSrc = '${q(winswSrc)}'`,
         `$winswCfg = '${q(winswCfgSrc)}'`,
@@ -351,16 +365,20 @@ ipcMain.handle('service:install', async (event, { sqlConfig, agentId }) => {
         `  Start-Sleep -Seconds 1`,
         `  $waited++`,
         `}`,
+        `if ($waited -ge 30) { Fail-WinSW 'remove-old' 16 }`,
         `# 4. Tuer les processus résiduels`,
         `try { Stop-Process -Name 'cockpit-agent-service' -Force 2>&1 | Out-Null } catch {}`,
         `try { Stop-Process -Name '${SERVICE_NAME}' -Force 2>&1 | Out-Null } catch {}`,
         `Start-Sleep -Seconds 1`,
         `# 5. Installer + démarrer via winsw`,
-        `$ErrorActionPreference = 'Stop'`,
-        `& $winsw install`,
-        `if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }`,
-        `& $winsw start`,
-        `exit $LASTEXITCODE`,
+        `$ErrorActionPreference = 'Continue'`,
+        `& $winsw install 2>&1 | Out-Null`,
+        `$installCode = $LASTEXITCODE`,
+        `if ($installCode -ne 0) { Fail-WinSW 'install' $installCode }`,
+        `& $winsw start 2>&1 | Out-Null`,
+        `$startCode = $LASTEXITCODE`,
+        `if ($startCode -ne 0) { Fail-WinSW 'start' $startCode }`,
+        `exit 0`,
       ].join('\r\n'), 'utf8');
 
       // IMPORTANT: le chemin du script contient un espace ("Cockpit Agent").
@@ -369,12 +387,20 @@ ipcMain.handle('service:install', async (event, { sqlConfig, agentId }) => {
       // Solution : entourer le chemin de guillemets doubles à l'intérieur du tableau.
       const psScriptQ = q(psScript);
       event.sender.send('service:progress', { step: 3, total: 5, label: 'Élévation UAC requise — acceptez l\'invite Windows…' });
-      execFileSync('powershell.exe', [
-        '-NonInteractive', '-NoProfile', '-Command',
-        `$p = Start-Process powershell.exe -Verb RunAs -Wait -PassThru -WindowStyle Hidden` +
-        ` -ArgumentList @('-NonInteractive','-NoProfile','-ExecutionPolicy','Bypass','-File','"${psScriptQ}"');` +
-        ` if ($p.ExitCode -ne 0) { throw "winsw exit $($p.ExitCode)" }`,
-      ], { windowsHide: false, timeout: 60000, encoding: 'utf8' });
+      try {
+        execFileSync('powershell.exe', [
+          '-NonInteractive', '-NoProfile', '-Command',
+          `$p = Start-Process powershell.exe -Verb RunAs -Wait -PassThru -WindowStyle Hidden` +
+          ` -ArgumentList @('-NonInteractive','-NoProfile','-ExecutionPolicy','Bypass','-File','"${psScriptQ}"');` +
+          ` if ($p.ExitCode -ne 0) { throw "service script exit $($p.ExitCode)" }`,
+        ], { windowsHide: false, timeout: 60000, encoding: 'utf8' });
+      } catch (err) {
+        let diagnostic = null;
+        try { diagnostic = JSON.parse(fs.readFileSync(diagnosticPath, 'utf8')); } catch (_) {}
+        throw new Error(formatServiceInstallFailure(diagnostic));
+      } finally {
+        try { fs.rmSync(diagnosticPath, { force: true }); } catch (_) {}
+      }
     }
 
     // 4. Attendre que le health check réponde (max 90s — pkg + SCM peuvent prendre du temps)
