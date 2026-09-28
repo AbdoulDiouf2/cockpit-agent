@@ -27,6 +27,7 @@ const health           = require('../utils/health');
 const logger           = require('../utils/logger');
 const config           = require('../config');
 const { AGENT_VERSION } = require('../../../shared/constants');
+const queryProtocolV2 = require('./query-protocol-v2');
 
 let _socket = null;
 
@@ -114,6 +115,8 @@ function connect() {
     // lors de l'onboarding (le backend met à jour l'organisation et auto-complète le step 3)
     _sendAgentConfig();
   });
+
+  queryProtocolV2.attach(_socket);
 
   // ─── token_renewal ────────────────────────────────────────────────────────
   // Reçu quand le backend renouvelle automatiquement le token (J-7 avant expiration).

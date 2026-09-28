@@ -98,6 +98,8 @@ async function sendHeartbeat(status, lastSync, nbRecordsTotal, opts = {}) {
       status,
       lastSync:      lastSync?.toISOString() || null,
       nbRecordsTotal,
+      errorCount: opts.errorCount ?? 0,
+      ...(opts.lastError ? { lastError: opts.lastError } : {}),
     };
 
     const response = await axios.post(

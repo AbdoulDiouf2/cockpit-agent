@@ -328,6 +328,8 @@ function _readBody(req) {
 
 // ─── Serveur HTTP ─────────────────────────────────────────────────────────────
 
+let _localSqlRequests = [];
+
 function start(port) {
   if (_server) return;
   _startedAt = Date.now();
@@ -422,8 +424,28 @@ function start(port) {
       });
     }
 
-    // ── POST /execute_sql ── exécution SQL locale directe (parité Python)
+    // ── POST /execute_sql ── diagnostic local explicitement autorisé
     if (url === '/execute_sql' && method === 'POST') {
+      // Dix requêtes locales par minute, y compris les demandes mal formées.
+      const now = Date.now();
+      _localSqlRequests = _localSqlRequests.filter(t => now - t < 60000);
+      if (_localSqlRequests.length >= 10) {
+        return _jsonRes(res, 429, { error: 'Limite locale atteinte', code: 'RATE_LIMITED' });
+      }
+      _localSqlRequests.push(now);
+      // Désactivé par défaut. Un secret distinct du token agent doit être configuré
+      // pour les rares outils locaux qui utilisent encore cette route.
+      const secret = process.env.COCKPIT_LOCAL_SQL_TOKEN;
+      const provided = req.headers.authorization?.replace(/^Bearer /i, '');
+      if (!secret || secret.length < 32 || !provided) {
+        return _jsonRes(res, 403, { error: 'Exécution locale désactivée', code: 'LOCAL_SQL_DISABLED' });
+      }
+      const crypto = require('node:crypto');
+      const expected = crypto.createHash('sha256').update(secret).digest();
+      const received = crypto.createHash('sha256').update(provided).digest();
+      if (!crypto.timingSafeEqual(expected, received)) {
+        return _jsonRes(res, 403, { error: 'Accès refusé', code: 'FORBIDDEN' });
+      }
       let body;
       try { body = await _readBody(req); }
       catch (e) { return _jsonRes(res, 400, { error: e.message, code: 'INVALID_JSON' }); }
@@ -491,7 +513,7 @@ function start(port) {
     res.writeHead(404).end();
   });
 
-  _server.listen(port, '0.0.0.0', () => {
+  _server.listen(port, '127.0.0.1', () => {
     logger.info(`Health dashboard démarré → http://127.0.0.1:${port}/`);
   });
 
