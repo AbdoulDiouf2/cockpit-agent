@@ -37,4 +37,7 @@ execSync(
   { cwd: ROOT, stdio: 'inherit', shell: true }
 );
 
+// Exercise the actual pkg executable, including native addon extraction, without SQL.
+execSync(`"${output}" --check-native-driver`, { cwd: ROOT, stdio: 'inherit' });
+
 console.log(`✅ Service compilé → ${output}`);

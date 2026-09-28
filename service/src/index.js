@@ -16,6 +16,18 @@ const agentSocket = require('./ws/agent-socket');
 const { closePool } = require('./sql/connection');
 const { HEALTH_PORT, AGENT_VERSION } = require('../../shared/constants');
 
+// Artifact preflight: exercises the packaged native driver without opening SQL or sockets.
+if (process.argv.includes('--check-native-driver')) {
+  try {
+    require('./sql/connection').assertWindowsDriver();
+    process.stdout.write(`WINDOWS_AUTH_DRIVER_OK node=${process.versions.node} abi=${process.versions.modules} arch=${process.arch}\n`);
+    process.exit(0);
+  } catch (error) {
+    process.stderr.write(`WINDOWS_AUTH_DRIVER_FAIL ${error.message}\n`);
+    process.exit(1);
+  }
+}
+
 async function main() {
   logger.info('═══════════════════════════════════════════════');
   logger.info(` Cockpit Agent v${AGENT_VERSION} — démarrage`);

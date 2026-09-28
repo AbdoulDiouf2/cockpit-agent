@@ -7,7 +7,16 @@ const credentialStore = require('../security/credential-store');
 
 // msnodesqlv8 : driver natif ODBC requis pour Windows Integrated Security
 let sqlOdbc = null;
-try { sqlOdbc = require('mssql/msnodesqlv8'); } catch (_) {}
+let sqlOdbcLoadError = null;
+try { sqlOdbc = require('mssql/msnodesqlv8'); } catch (error) { sqlOdbcLoadError = error; }
+
+function assertWindowsDriver() {
+  if (sqlOdbc) return sqlOdbc;
+  const reason = sqlOdbcLoadError
+    ? `${sqlOdbcLoadError.code || sqlOdbcLoadError.name}: ${sqlOdbcLoadError.message}`
+    : 'unknown load error';
+  throw new Error(`Windows Auth driver failed to load: ${reason}`, { cause: sqlOdbcLoadError });
+}
 
 let _pool = null;
 
@@ -24,7 +33,7 @@ async function getPool() {
 
   if (cfg.sql_use_windows_auth) {
     // tedious ne supporte pas SSPI — on passe par l'ODBC Driver natif Windows
-    if (!sqlOdbc) throw new Error('msnodesqlv8 requis pour Windows Auth — lancez : npm install msnodesqlv8');
+    assertWindowsDriver();
 
     const serverStr = cfg.sql_instance
       ? `${cfg.sql_server}\\${cfg.sql_instance}`
@@ -96,4 +105,4 @@ async function testConnection(sqlConfig) {
   }
 }
 
-module.exports = { getPool, closePool, testConnection, sql };
+module.exports = { getPool, closePool, testConnection, assertWindowsDriver, sql };
