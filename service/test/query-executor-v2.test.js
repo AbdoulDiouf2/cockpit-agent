@@ -2,6 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { validatePilotPayload, executePilot } = require('../src/jobs/query-executor-v2');
+const campaigns = require('../src/jobs/certification-campaigns-v2.json');
 
 const statement = 'SELECT TOP (1000) CONVERT(varchar(64), SUM([ca_ht])) AS [value], COUNT_BIG(*) AS [__source_row_count] FROM [dbo].[VW_FINANCE_GENERAL] WHERE [dt_jour] >= @periodFrom AND [dt_jour] < @periodTo';
 const payload = () => ({ protocolVersion: 2, jobId: 'j1', queryId: 'q1', sequence: 1,
@@ -47,4 +48,34 @@ test('autorise le groupement mensuel strict et refuse une dimension libre', () =
   assert.throws(() => validatePilotPayload({ ...payload(),
     statement: grouped.replace('[annee_mois] AS [month]', '[cg_num] AS [account]') }),
     /INVALID_V2_STATEMENT/);
+});
+
+test('accepte les neuf plans exacts de la campagne versionnee et refuse toute extension', () => {
+  const campaign = campaigns[0];
+  let accepted = 0;
+  for (const plan of campaign.plans) for (const [periodFrom, periodTo] of campaign.periods) {
+    const sql = plan.statement;
+    const grouped = sql.includes('[annee_mois] AS [month]');
+    const candidate = { ...payload(), executionPurpose: 'certification',
+      certificationCampaign: { id: campaign.id, version: campaign.version },
+      registryVersion: campaign.registryVersion, statement: sql,
+      parameters: { periodFrom, periodTo } };
+    assert.deepEqual(validatePilotPayload(candidate), candidate.parameters);
+    accepted++;
+    for (const [change, error] of [
+      [{ executionPurpose: undefined }, /INVALID_V2_PLAN|INVALID_V2_STATEMENT/],
+      [{ executionPurpose: 'business' }, /INVALID_V2_PLAN/],
+      [{ registryVersion: 'stale' }, /INVALID_V2_PLAN/],
+      [{ certificationCampaign: { id: 'other', version: 1 } }, /INVALID_V2_PLAN/],
+      [{ statement: sql.replace(/SUM\(\[[a-z_]+\]\)/, 'SUM([secret_column])') }, /INVALID_V2_STATEMENT/],
+      [{ statement: sql.replace('[dbo].[VW_FINANCE_GENERAL]', '[dbo].[OTHER]') }, /INVALID_V2_STATEMENT/],
+      [{ statement: sql + '; SELECT 1' }, /INVALID_V2_STATEMENT/],
+      [{ parameters: { periodFrom: '2020-01-01', periodTo } }, /INVALID_V2_PARAMETERS/],
+      [{ resourceId: 'other' }, /INVALID_V2_PLAN/],
+    ]) assert.throws(() => validatePilotPayload({ ...candidate, ...change }), error);
+    if (grouped) assert.throws(() => validatePilotPayload({ ...candidate,
+      statement: sql.replace('[annee_mois] AS [month]', '[cg_num] AS [account]') }),
+    /INVALID_V2_STATEMENT/);
+  }
+  assert.equal(accepted, 9);
 });

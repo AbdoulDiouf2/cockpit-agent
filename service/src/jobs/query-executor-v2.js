@@ -3,6 +3,20 @@
 // Exécuteur strictement borné au pilote comptable ; le backend fournit le plan.
 
 const STATEMENT = /^SELECT TOP \(([1-9][0-9]{0,3})\) CONVERT\(varchar\(64\), SUM\(\[ca_ht\]\)\) AS \[value\], COUNT_BIG\(\*\) AS \[__source_row_count\](, \[annee_mois\] AS \[month\])? FROM \[dbo\]\.\[VW_FINANCE_GENERAL\] WHERE \[dt_jour\] >= @periodFrom AND \[dt_jour\] < @periodTo( GROUP BY \[annee_mois\])?( ORDER BY \[annee_mois\] (ASC|DESC))?$/;
+const campaigns = require('./certification-campaigns-v2.json');
+
+function validateCertificationStatement(payload) {
+  const campaign = campaigns.find(candidate => candidate.id === payload.certificationCampaign?.id &&
+    candidate.version === payload.certificationCampaign?.version &&
+    candidate.registryVersion === payload.registryVersion &&
+    candidate.resourceId === payload.resourceId);
+  if (!campaign) throw new Error('INVALID_V2_PLAN');
+  if (!campaign.plans.some(plan => plan.statement === payload.statement))
+    throw new Error('INVALID_V2_STATEMENT');
+  if (!campaign.periods.some(([from, to]) => from === payload.parameters?.periodFrom &&
+      to === payload.parameters?.periodTo))
+    throw new Error('INVALID_V2_PARAMETERS');
+}
 
 function validatePilotPayload(payload) {
   if (!payload || payload.protocolVersion !== 2 ||
@@ -10,9 +24,15 @@ function validatePilotPayload(payload) {
       typeof payload.jobId !== 'string' || typeof payload.queryId !== 'string' ||
       !Number.isInteger(payload.sequence) || payload.sequence < 1)
     throw new Error('INVALID_V2_PLAN');
-  const match = STATEMENT.exec(payload.statement || '');
-  if (!match || Number(match[1]) > 1000 || !!match[2] !== !!match[3])
-    throw new Error('INVALID_V2_STATEMENT');
+  if (payload.executionPurpose === 'certification') {
+    validateCertificationStatement(payload);
+  } else {
+    if (payload.executionPurpose !== undefined || payload.certificationCampaign !== undefined ||
+        payload.registryVersion !== undefined) throw new Error('INVALID_V2_PLAN');
+    const match = STATEMENT.exec(payload.statement || '');
+    if (!match || Number(match[1]) > 1000 || !!match[2] !== !!match[3])
+      throw new Error('INVALID_V2_STATEMENT');
+  }
   const params = payload.parameters;
   if (!params || Object.keys(params).sort().join(',') !== 'periodFrom,periodTo' ||
       !/^\d{4}-\d{2}-\d{2}$/.test(params.periodFrom) ||

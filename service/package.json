@@ -27,6 +27,7 @@
   },
   "pkg": {
     "assets": [
+      "src/jobs/certification-campaigns-v2.json",
       "../shared/sql/**/*.sql",
       "../node_modules/msnodesqlv8/build/Release/sqlserver.node"
     ],

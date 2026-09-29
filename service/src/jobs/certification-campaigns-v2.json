@@ -1,0 +1,18 @@
+[
+  {
+    "id": "finance_general_source_validation_v1",
+    "version": 1,
+    "registryVersion": "0a4bf4c981ffa24cdc3aea6c5d2db923fe720d3d4e9ed4d4b6b8fd3ac7481892",
+    "resourceId": "sage100:finance_general",
+    "periods": [
+      ["2022-01-01", "2022-02-01"],
+      ["2022-02-01", "2022-03-01"],
+      ["2021-01-01", "2021-02-01"]
+    ],
+    "plans": [
+      { "statement": "SELECT TOP (1000) CONVERT(varchar(64), SUM([ca_ttc])) AS [value], COUNT_BIG(*) AS [__source_row_count] FROM [dbo].[VW_FINANCE_GENERAL] WHERE [dt_jour] >= @periodFrom AND [dt_jour] < @periodTo" },
+      { "statement": "SELECT TOP (1000) CONVERT(varchar(64), SUM([marge_brute])) AS [value], COUNT_BIG(*) AS [__source_row_count], [annee_mois] AS [month] FROM [dbo].[VW_FINANCE_GENERAL] WHERE [dt_jour] >= @periodFrom AND [dt_jour] < @periodTo GROUP BY [annee_mois] ORDER BY [annee_mois] ASC" },
+      { "statement": "SELECT TOP (1000) CONVERT(varchar(64), SUM([ebitda])) AS [value], COUNT_BIG(*) AS [__source_row_count] FROM [dbo].[VW_FINANCE_GENERAL] WHERE [dt_jour] >= @periodFrom AND [dt_jour] < @periodTo" }
+    ]
+  }
+]
